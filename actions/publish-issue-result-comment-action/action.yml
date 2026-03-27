@@ -1,35 +1,36 @@
-name: Publish Result Comment
+name: 發布結果留言
 description: >
-  回寫最終結果到進度留言。不管成功或失敗都執行：
-  有 result_file 就貼檔案內容，否則組 fallback 失敗摘要。
+  回寫最終結果到進度留言。不論成功或失敗皆執行：
+  若 result_file 存在且非空則貼出檔案內容，否則組合 fallback 失敗摘要。
 
 inputs:
   comment_id:
-    description: 要更新的 GitHub issue comment ID
+    description: 要更新的 GitHub Issue 留言 ID
     required: true
   result_file:
-    description: 結果檔路徑（可能不存在或為空）
+    description: 結果檔路徑（執行完畢後可能不存在或為空）
     required: true
   token:
-    description: GitHub token（需有 issues:write 權限）
+    description: GitHub Token（需具備 issues:write 權限）
     required: true
   repository:
-    description: 'owner/repo 格式的倉庫名稱'
+    description: 倉庫名稱，格式為 owner/repo
     required: true
   run_id:
-    description: GitHub run ID（用於 fallback 失敗訊息）
+    description: GitHub Workflow Run ID（用於組合 fallback 失敗連結）
     required: true
   server_url:
-    description: GitHub server URL（用於 fallback 失敗訊息）
+    description: GitHub Server URL（用於組合 fallback 失敗連結）
     required: true
   brain_meta:
-    description: BRAIN_META marker（附加在 fallback 失敗訊息末尾）
-    required: true
+    description: BRAIN_META 標記字串（附加於 fallback 失敗訊息末尾）
+    required: false
+    default: '<!-- githubclaw-brain-result: {"source":"githubclaw-worker-brain"} -->'
 
 runs:
   using: composite
   steps:
-    - name: Patch comment with final result
+    - name: 將最終結果回寫至進度留言
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
@@ -41,22 +42,23 @@ runs:
         BRAIN_META: ${{ inputs.brain_meta }}
       run: |
         set -euo pipefail
-        sleep 5  # 等待前一步驟的 image URL rewrite 完成
+        sleep 5  # 等待前一步驟（image URL rewrite）非同步寫入完成
 
-        # 決定 body 來源：有結果檔就用，否則組 fallback 失敗摘要。
+        # 判斷留言內容來源：結果檔存在且非空則直接讀取，否則組合 fallback 失敗摘要。
         if [[ -f "${RESULT_FILE}" && -s "${RESULT_FILE}" ]]; then
           _body="$(cat "${RESULT_FILE}")"
         else
-          _body="$(printf '❌ 執行失敗（run_id=%s）。請查看 workflow 執行記錄：%s/%s/actions/runs/%s。\n\n%s' \
+          _body="$(printf '❌ 執行失敗（run_id=%s）。請查看 Workflow 執行記錄：%s/%s/actions/runs/%s。\n\n%s' \
             "${RUN_ID}" "${SERVER_URL}" "${REPOSITORY}" "${RUN_ID}" "${BRAIN_META}")"
         fi
 
         body_file="${RUNNER_TEMP}/publish-result-comment-body-$$.json"
 
-        # inline build-comment-body-json：透過 env var 傳遞避免換行跳脫問題。
+        # 透過環境變數將留言內容傳入 Node.js，序列化為 JSON 後寫入暫存檔，
+        # 藉此避免直接在 shell 中處理多行字串或特殊字元的跳脫問題。
         _BODY="${_body}" node -e "process.stdout.write(JSON.stringify({body: process.env._BODY}))" > "${body_file}"
 
-        # inline gh-api-with-retry：最多 5 次，間隔 6 秒。
+        # 呼叫 GitHub API 更新留言，失敗時自動重試，最多 5 次，每次間隔 6 秒。
         attempt=1; max_attempts=5; exit_code=0
         while true; do
           if gh api --method PATCH \
@@ -70,6 +72,6 @@ runs:
           if (( attempt >= max_attempts )); then
             rm -f "${body_file}"; exit "${exit_code}"
           fi
-          echo "::warning::gh api failed (attempt ${attempt}/${max_attempts}); retrying in 6 seconds..."
+          echo "::warning::GitHub API 呼叫失敗（第 ${attempt}/${max_attempts} 次），6 秒後重試..."
           sleep 6; attempt=$(( attempt + 1 ))
         done

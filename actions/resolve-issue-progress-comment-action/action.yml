@@ -3,18 +3,25 @@ description: 若已知 comment id 則沿用；否則在 issue 上建立一則新
 
 inputs:
   issue_number:
+    description: 目標 Issue 編號
     required: true
   progress_comment_id:
+    description: 已存在的進度留言 ID；若提供則直接沿用，不重新建立
     required: false
     default: ''
   token:
+    description: 用於呼叫 GitHub API 的存取權杖
     required: true
   repository:
+    description: 目標儲存庫，格式為 owner/repo
     required: true
   run_id:
+    description: 當前 workflow run 的 ID
     required: true
   brain_meta:
-    required: true
+    description: 附加於進度留言的 brain metadata 字串
+    required: false
+    default: '<!-- githubclaw-brain-result: {"source":"githubclaw-worker-brain"} -->'
 
 outputs:
   comment_id:
@@ -24,7 +31,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Resolve or create progress comment
+    - name: 解析或建立進度留言
       id: resolve
       shell: bash
       env:
@@ -37,7 +44,7 @@ runs:
       run: |
         set -euo pipefail
 
-        # 已知 comment id 時不重建，直接沿用。
+        # 已知 comment id 時直接沿用，不重新建立。
         if [[ -n "${PROGRESS_COMMENT_ID}" ]]; then
           echo "comment_id=${PROGRESS_COMMENT_ID}" >> "$GITHUB_OUTPUT"
           exit 0
@@ -46,13 +53,13 @@ runs:
         comment_body="$(printf '🤖 任務已承接，正在準備執行環境...\n\n- run_id: `%s`\n\n%s' \
           "${RUN_ID}" "${BRAIN_META}")"
 
-        # 把 body 序列化為 JSON 避免多行字串在 -f 參數中出錯。
+        # 將 body 序列化為 JSON，避免多行字串在 --input 參數中出錯。
         body_file="progress-comment-body-$$.json"
         _BODY="${comment_body}" node -e \
           "process.stdout.write(JSON.stringify({body: process.env._BODY}))" \
           > "${body_file}"
 
-        # Inline retry loop（最多 5 次）。
+        # 發送 API 請求，最多重試 5 次。
         attempt=1; exit_code=0; max_attempts=5
         while true; do
           if response="$(gh api \
@@ -68,17 +75,12 @@ runs:
             rm -f "${body_file}"
             exit "${exit_code}"
           fi
-          echo "::warning::gh api failed (attempt ${attempt}/${max_attempts}); retrying in 6 seconds..."
+          echo "::warning::gh api 失敗（第 ${attempt}/${max_attempts} 次），6 秒後重試..."
           sleep 6
           attempt=$(( attempt + 1 ))
         done
 
         rm -f "${body_file}"
 
-        comment_id="$(printf '%s' "${response}" | jq -r '.id')"
-        if [[ -z "${comment_id}" || "${comment_id}" == "null" ]]; then
-          echo "::error::Failed to create progress comment"
-          exit 1
-        fi
-
-        echo "comment_id=${comment_id}" >> "$GITHUB_OUTPUT"
+        # gh api 失敗時已由 retry 機制處理，此處直接抽取 id。
+        echo "comment_id=$(printf '%s' "${response}" | jq -r '.id')" >> "$GITHUB_OUTPUT"

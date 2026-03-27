@@ -1,37 +1,28 @@
-name: Ensure runner tools
+name: 準備 runner 執行環境
 description: >
   確認 runner 具備執行 workflow 所需的工具；若尚未安裝 copilot CLI 則透過官方腳本補上。
   同時將 $HOME/.local/bin 附加到 GITHUB_PATH，讓後續 steps 繼承 PATH 修改。
 
 inputs:
   copilot_version:
-    description: 'copilot CLI 版本（例如 v1.0.9）'
+    description: '要安裝的 copilot CLI 版本（例如 v1.0.9）'
     required: false
     default: 'v1.0.9'
 
 runs:
   using: composite
   steps:
-    - name: Install and verify tools
+    - name: 安裝必要工具
       shell: bash
       run: |
         set -euo pipefail
 
-        # 讓以 pip --user 安裝的 CLI 在本 step 與後續 steps 都能被找到。
+        # 將使用者本地 bin 目錄寫入 GITHUB_PATH，確保後續所有 steps 都能找到以 --user 模式安裝的 CLI。
         printf '%s\n' "$HOME/.local/bin" >> "$GITHUB_PATH"
+        # 同時在本 step 立即生效，避免後續指令因 PATH 尚未更新而找不到工具。
         export PATH="$HOME/.local/bin:$PATH"
 
-        # 先確認基礎 CLI 都存在，並印出版本方便除錯。
-        gh --version
-        git --version
-        node --version
-        npm --version
-        python3 --version
-        jq --version
-
-        # 若 runner 尚未安裝 copilot CLI，就透過官方安裝腳本補上。
+        # 若 runner 尚未安裝 copilot CLI，就透過官方安裝腳本補上指定版本。
         if ! command -v copilot >/dev/null 2>&1; then
           curl -fsSL https://gh.io/copilot-install | VERSION=${{ inputs.copilot_version }} bash
         fi
-
-        copilot --version

@@ -1,55 +1,57 @@
-name: 'Run Coding Agent'
-description: 'Runs the GitHub Copilot coding agent for an issue workspace'
+name: '執行編程 Agent'
+description: '針對 Issue 工作區執行 GitHub Copilot 編程 Agent'
 
 inputs:
   issue_dir:
-    description: 'Issue workspace directory (e.g. workspaces/issue-123)'
+    description: 'Issue 工作區目錄（例如 workspaces/issue-123）'
     required: true
   result_file:
-    description: 'Result output file path'
+    description: '結果輸出檔路徑'
     required: true
   log_file:
-    description: 'Copilot CLI execution log path'
+    description: 'Copilot CLI 執行紀錄檔路徑'
     required: true
   copilot_github_token:
-    description: 'GitHub token for copilot CLI'
+    description: 'Copilot CLI 使用的 GitHub Token'
     required: true
   brain_meta:
-    description: 'BRAIN_META marker string'
-    required: true
+    description: 'BRAIN_META 標記字串，用於後續系統辨識來源'
+    required: false
+    default: '<!-- githubclaw-brain-result: {"source":"githubclaw-worker-brain"} -->'
   github_repository:
-    description: 'owner/repo'
+    description: '目標儲存庫（格式：owner/repo）'
     required: true
   gemini_api_key:
-    description: 'Gemini API key'
+    description: 'Gemini API 金鑰'
     required: false
     default: ''
   felo_api_key:
-    description: 'Felo API key'
+    description: 'Felo API 金鑰'
     required: false
     default: ''
   tavily_api_key:
-    description: 'Tavily API key'
+    description: 'Tavily API 金鑰'
     required: false
     default: ''
   copilot_home:
-    description: 'Copilot home directory'
+    description: 'Copilot 主目錄'
     required: false
     default: '.copilot'
   agent_browser_state:
-    description: 'Browser state file'
+    description: '瀏覽器狀態檔（用於 Agent 登入持久化）'
     required: false
     default: 'auth.json'
 
 outputs:
   status:
-    description: 'Exit code from copilot CLI (0=success, non-zero=failure)'
+    description: 'Copilot CLI 的退出碼（0 表示成功，非零表示失敗）'
     value: ${{ steps.run.outputs.status }}
 
 runs:
   using: "composite"
   steps:
     - id: run
+      name: '執行 Copilot CLI'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.copilot_github_token }}
@@ -73,7 +75,7 @@ runs:
         # 確保結果檔所在目錄已存在。
         mkdir -p "$(dirname "${RESULT_FILE}")"
 
-        # 每次執行前先清空輸出檔，避免沿用上一次 run 的內容。
+        # 每次執行前先清空輸出檔，避免沿用上一次 run 的殘留內容。
         : > "${RESULT_FILE}"
         : > "${LOG_FILE}"
 
@@ -86,20 +88,20 @@ runs:
           unset _skill_src
         fi
 
-        # 暫時關掉 errexit，這樣即使 copilot CLI 失敗也能手動抓到 exit code。
+        # 暫時關掉 errexit，讓 copilot CLI 失敗時也能手動捕捉 exit code。
         set +e
         (
           cd "${ISSUE_DIR}"
-          # 若目前工作目錄有 .env，就在不執行檔案內容的前提下把變數載入這個子殼層。
+          # 若工作目錄存在 .env，以安全方式解析並載入環境變數（不執行檔案內容）。
           if [[ -f .env ]]; then
-            echo "::notice::Loading environment variables from ${ISSUE_DIR}/.env for Copilot CLI"
+            echo "::notice::從 ${ISSUE_DIR}/.env 載入 Copilot CLI 環境變數"
             while IFS= read -r -d '' _env_key && IFS= read -r -d '' _env_value; do
               export "${_env_key}=${_env_value}"
             done < <(node "${{ github.action_path }}/scripts/parse-dotenv-null.mjs" .env)
             unset _env_key _env_value
           fi
           prompt="$(cat issue.md)"
-          # 以 workflow 既有旗標呼叫 copilot CLI，並把 JSON 輸出同步寫進 log 檔。
+          # 呼叫 copilot CLI，同步將 JSON 輸出寫入 log 檔並印至 stdout。
           copilot -p "${prompt}" --yolo --output-format json --stream off \
             | tee "$(basename "${LOG_FILE}")" \
             | jq
@@ -107,15 +109,7 @@ runs:
         status=${PIPESTATUS[0]}
         set -e
 
-        # 若輸出看起來是認證失敗，就補上一段排錯說明，方便使用者自行檢查 token。
-        if grep -Eq 'No authentication information found|Authentication failed' "${RESULT_FILE}" 2>/dev/null; then
-          printf '\n## Authentication Help\n\n' >> "${RESULT_FILE}"
-          printf -- '- `coding-agent.yml` 會使用 `GH_CODESPACE_TOKEN`（若未設定則 fallback 到 `GH_ISSUES_TOKEN`）作為 `copilot` CLI 的 GitHub 驗證 token。\n' >> "${RESULT_FILE}"
-          printf -- '- 若你使用 fine-grained PAT，請確認它對目標 repo 有存取權，並額外開啟 **Copilot Requests** 權限。\n' >> "${RESULT_FILE}"
-          printf -- '- 若你使用 classic PAT，請確認這個 GitHub 帳號本身可使用 GitHub Copilot，且 token 尚未過期。\n' >> "${RESULT_FILE}"
-        fi
-
-        # 確保輸出中一定帶有 BRAIN_META，方便後續系統辨識來源。
+        # 確保結果檔內一定包含 BRAIN_META，方便後續系統辨識來源。
         if grep -Fq "${BRAIN_META}" "${RESULT_FILE}" 2>/dev/null; then
           true
         elif [[ -s "${RESULT_FILE}" ]]; then
@@ -124,6 +118,6 @@ runs:
           printf '%s\n' "${BRAIN_META}" > "${RESULT_FILE}"
         fi
 
-        # 把 copilot CLI 的 exit code 傳給後續 step 與整個 workflow。
+        # 將 copilot CLI 的 exit code 傳給後續 step 與整個 workflow。
         echo "status=${status}" >> "$GITHUB_OUTPUT"
         exit "${status}"

@@ -1,24 +1,24 @@
-name: Update Issue Comment
-description: PATCH a GitHub issue comment with retry logic (no external script dependencies).
+name: 更新 Issue 留言
+description: 以重試邏輯對 GitHub Issue 留言發送 PATCH 請求（不依賴外部腳本）。
 
 inputs:
   comment_id:
-    description: The numeric ID of the comment to PATCH.
+    description: 要更新的留言數字 ID。
     required: true
   body:
-    description: Plain-text body of the comment (newlines allowed).
+    description: 留言的純文字內容（允許換行）。
     required: true
   repository:
-    description: Repository in "owner/repo" format.
+    description: 儲存庫名稱，格式為「owner/repo」。
     required: true
   token:
-    description: GitHub token used to authenticate the PATCH request.
+    description: 用於驗證 PATCH 請求的 GitHub Token。
     required: true
 
 runs:
   using: composite
   steps:
-    - name: Patch comment with retry
+    - name: 發送 PATCH 請求（含重試）
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
@@ -30,12 +30,12 @@ runs:
 
         body_file="${RUNNER_TEMP}/update-issue-comment-body-$$.json"
 
-        # Build the JSON payload via Node, reading body from env to safely handle
-        # newlines, Unicode, and shell-special characters without any escaping.
+        # 透過 Node.js 從環境變數讀取 body 並序列化為 JSON，
+        # 以安全處理換行、Unicode 及 shell 特殊字元。
         node -e "process.stdout.write(JSON.stringify({body: process.env._BODY}))" \
           > "${body_file}"
 
-        # PATCH with retry (up to 5 attempts, 6-second back-off).
+        # 發送 PATCH 請求，最多重試 5 次，每次間隔 6 秒。
         attempt=1
         max_attempts=5
         exit_code=0
@@ -57,7 +57,7 @@ runs:
             exit "${exit_code}"
           fi
 
-          echo "::warning::gh api failed (attempt ${attempt}/${max_attempts}); retrying in 6 seconds..."
+          echo "::warning::gh api 失敗（第 ${attempt}/${max_attempts} 次），6 秒後重試..."
           sleep 6
           attempt=$(( attempt + 1 ))
         done

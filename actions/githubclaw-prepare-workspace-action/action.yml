@@ -1,46 +1,44 @@
-name: Prepare Issue Workspace
-description: >
-  Checkout or create the issue branch (rebasing onto main when the branch already
-  exists) and export the workspace paths used by subsequent steps.
+name: 準備 Issue 工作區
+description: 建立或切換至 Issue 分支，並匯出後續步驟所需的工作區路徑。
 
 inputs:
   issue_number:
-    description: Issue number
+    description: Issue 編號
     required: true
   push_token:
-    description: Token used for git fetch / push
+    description: 用於 git fetch / push 的存取權杖
     required: true
   git_user_name:
-    description: Git commit author name
+    description: Git 提交作者名稱
     required: true
   git_user_email:
-    description: Git commit author email
+    description: Git 提交作者電子郵件
     required: true
   github_repository:
-    description: "Repository in owner/repo format"
+    description: 儲存庫名稱（格式：owner/repo）
     required: true
 
 outputs:
   branch_name:
-    description: Name of the issue branch
+    description: Issue 分支名稱
     value: ${{ steps.prep.outputs.branch_name }}
   issue_dir:
-    description: Workspace directory for this issue
+    description: 此 Issue 的工作區目錄路徑
     value: ${{ steps.prep.outputs.issue_dir }}
   prompt_file:
-    description: Path to the issue prompt file
+    description: Issue 提示檔案路徑
     value: ${{ steps.prep.outputs.prompt_file }}
   result_file:
-    description: Path to the agent result file
+    description: Agent 執行結果檔案路徑
     value: ${{ steps.prep.outputs.result_file }}
   log_file:
-    description: Path to the agent execution log file
+    description: Agent 執行記錄檔案路徑
     value: ${{ steps.prep.outputs.log_file }}
 
 runs:
   using: composite
   steps:
-    - name: Prepare workspace
+    - name: 準備工作區
       id: prep
       shell: bash
       env:
@@ -53,22 +51,27 @@ runs:
       run: |
         set -euo pipefail
 
+        # 依 Issue 編號組合分支名稱與工作區路徑
         branch_name="issue-${ISSUE_NUMBER}"
         issue_dir="workspaces/issue-${ISSUE_NUMBER}"
         prompt_file="${issue_dir}/issue.md"
 
+        # 設定 Git 提交者身份，並注入 push 權杖以允許推送
         git config user.name "${AUTOMATION_GIT_USER_NAME}"
         git config user.email "${AUTOMATION_GIT_USER_EMAIL}"
         git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
+        # 嘗試從遠端取得 Issue 分支（不存在時忽略錯誤）
         git fetch --no-tags origin "${branch_name}" || true
 
+        # 若遠端已有此分支則切換過去；否則從 main 建立新分支
         if git show-ref --verify --quiet "refs/remotes/origin/${branch_name}"; then
           git checkout -B "${branch_name}" "origin/${branch_name}"
         else
           git checkout -B "${branch_name}" origin/main
         fi
 
+        # 將所有路徑輸出供後續步驟使用
         {
           echo "branch_name=${branch_name}"
           echo "issue_dir=${issue_dir}"

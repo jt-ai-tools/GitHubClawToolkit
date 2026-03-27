@@ -1,8 +1,5 @@
 name: Commit and push artifacts
-description: >
-  把 issue workspace 內產生的 artifacts 提交並推到 issue branch。
-  以 git checkout <commit> -- <dir> 取代 cherry-pick，避免遠端刪除 workspace 檔案後
-  出現 CONFLICT (modify/delete) 的問題。
+description: 將 issue workspace 產生的 artifacts 提交並推送至 issue branch。
 
 inputs:
   issue_number:
@@ -44,30 +41,30 @@ runs:
       run: |
         set -euo pipefail
 
-        # 若關鍵路徑沒準備好，就直接跳過，避免推送錯誤內容。
+        # 關鍵變數未設定時直接跳過，避免推送空內容。
         if [[ -z "${ISSUE_DIR}" || -z "${BRANCH_NAME}" ]]; then
-          echo "No workspace dir set; skipping artifact commit."
+          echo "工作目錄或分支名稱未設定，略過 artifact commit。"
           exit 0
         fi
 
-        # 確保 git 身分與遠端 URL 正確，composite action 不繼承前一 step 的設定。
+        # composite action 不繼承前一 step 的 git 設定，需在此重新指定身分與遠端 URL。
         git config user.name "${AUTOMATION_GIT_USER_NAME}"
         git config user.email "${AUTOMATION_GIT_USER_EMAIL}"
         git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
-        # 只暫存這次 issue 工作目錄下的產物。
+        # 只暫存本次 issue 工作目錄下的產物，不影響其他檔案。
         git add "${ISSUE_DIR}"
 
-        # 若沒有任何新變更，就不做空 commit。
+        # staging area 無變更則跳過，避免產生空 commit。
         if git diff --cached --quiet -- "${ISSUE_DIR}"; then
-          echo "No artifact changes to commit."
+          echo "沒有新的 artifact 變更，略過 commit。"
           exit 0
         fi
 
-        # 先在本地建立 artifact commit，後續再把它重演到遠端 issue branch 的最新頂端。
+        # 先在本地建立 artifact commit，後續重演至遠端分支最新頂端再推送。
         git commit -m "chore: record coding agent output for issue #${ISSUE_NUMBER}"
 
-        # 記下剛才提交的 agent output commit hash 與訊息。
+        # 保存剛才的 commit hash 與訊息，供後續重演使用。
         AGENT_COMMIT=$(git rev-parse HEAD)
         AGENT_COMMIT_MESSAGE=$(git log -1 --format=%s "${AGENT_COMMIT}")
 
@@ -76,15 +73,14 @@ runs:
           git fetch origin "${BRANCH_NAME}" || true
 
           if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH_NAME}"; then
-            # 重設到遠端分支頂端，再直接把 agent commit 的 issue 目錄內容 checkout 上去。
-            # 使用 git checkout <commit> -- <dir> 而非 cherry-pick，可避免遠端分支若曾刪除
-            # workspace 檔案時產生的 CONFLICT (modify/delete) 問題，邏輯更簡單且穩健。
+            # 重設至遠端分支頂端，再以 git checkout <commit> -- <dir> 套用 agent commit 的目錄內容。
+            # 此做法比 cherry-pick 更穩健：即使遠端曾刪除 workspace 檔案，也不會觸發 CONFLICT (modify/delete)。
             git reset --hard "origin/${BRANCH_NAME}"
             git checkout "${AGENT_COMMIT}" -- "${ISSUE_DIR}"
 
-            # 若 staging area 沒有變更，代表遠端已包含等效內容，視為 no-op。
+            # staging area 無差異代表遠端已含等效內容，視為 no-op。
             if git diff --cached --quiet; then
-              echo "No changes to push: remote branch already contains equivalent artifact content."
+              echo "遠端分支已包含相同的 artifact 內容，無需推送。"
               push_succeeded=true
               break
             fi
@@ -100,11 +96,11 @@ runs:
               break
             fi
           fi
-          echo "::warning::Push attempt ${attempt}/3 failed; retrying in $((attempt * 3))s..."
+          echo "::warning::第 ${attempt}/3 次推送失敗，${attempt * 3} 秒後重試…"
           sleep $((attempt * 3))
         done
 
         if [ "$push_succeeded" != "true" ]; then
-          echo "::error::Failed to push after 3 attempts."
+          echo "::error::推送失敗，已重試 3 次仍無法完成。"
           exit 1
         fi

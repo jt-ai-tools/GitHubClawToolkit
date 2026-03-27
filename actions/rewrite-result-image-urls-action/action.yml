@@ -1,21 +1,21 @@
-name: Rewrite Image URLs
-description: Rewrites relative image paths in a result file to absolute GitHub blob URLs.
+name: 改寫圖片網址
+description: 將結果檔案中的相對圖片路徑改寫為絕對 GitHub blob URL。
 
 inputs:
   result_file:
-    description: Path to the result file
+    description: 結果檔案的路徑
     required: true
   repository:
-    description: Repository in owner/repo format
+    description: 儲存庫名稱，格式為 owner/repo
     required: true
   branch_name:
-    description: Branch name for constructing blob URLs
+    description: 用於組合 blob URL 的分支名稱
     required: true
 
 runs:
   using: composite
   steps:
-    - name: Rewrite image URLs
+    - name: 改寫圖片網址
       shell: bash
       env:
         RESULT_FILE: ${{ inputs.result_file }}
@@ -23,7 +23,9 @@ runs:
         BRANCH_NAME: ${{ inputs.branch_name }}
       run: |
         set -euo pipefail
+        # 確認結果檔案存在且非空才執行改寫，避免空檔案造成錯誤
         if [[ -s "${RESULT_FILE}" ]]; then
+          # 呼叫腳本，將相對圖片路徑轉換為完整的 GitHub blob URL
           node "${{ github.action_path }}/scripts/rewrite-image-urls.mjs" \
             "${RESULT_FILE}" \
             "${REPOSITORY}" \
