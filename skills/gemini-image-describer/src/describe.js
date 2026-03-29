@@ -177,45 +177,40 @@ async function main() {
   console.error(`正在分析圖片：${rawInput}`);
   console.error("請稍候，Gemini 正在處理圖片...\n");
 
-  const stream = await client.interactions.create({
-    model: "gemini-3-flash-preview",
-    input: [
+  const response = await client.models.generateContent({
+    model: "gemini-2.0-flash",
+    contents: [
       {
-        type: "text",
-        text: [
-          "請仔細觀察這張圖片，並以繁體中文（zh-TW）Markdown 格式提供以下資訊：",
-          "",
-          "## 圖片描述",
-          "描述圖片的整體場景和內容，包括環境、氛圍與主要活動。",
-          "",
-          "## 文字辨識（OCR）",
-          "列出圖片中出現的所有可辨識文字。若無文字，請說明「圖片中未發現文字」。",
-          "",
-          "## 關鍵物件",
-          "以條列方式列出畫面中的關鍵物件或元素。",
-          "",
-          "請確保輸出完整且結構清楚。",
-        ].join("\n"),
-      },
-      {
-        type: "image",
-        uri: imageInput.uri,
-        mime_type: imageInput.mimeType,
+        role: "user",
+        parts: [
+          {
+            text: [
+              "請仔細觀察這張圖片，並以繁體中文（zh-TW）Markdown 格式提供以下資訊：",
+              "",
+              "## 圖片描述",
+              "描述圖片的整體場景和內容，包括環境、氛圍與主要活動。",
+              "",
+              "## 文字辨識（OCR）",
+              "列出圖片中出現的所有可辨識文字。若無文字，請說明「圖片中未發現文字」。",
+              "",
+              "## 關鍵物件",
+              "以條列方式列出畫面中的關鍵物件或元素。",
+              "",
+              "請確保輸出完整且結構清楚。",
+            ].join("\n"),
+          },
+          {
+            inlineData: {
+              mimeType: imageInput.mimeType,
+              data: imageInput.uri.replace(/^data:[^;]+;base64,/, ""),
+            },
+          },
+        ],
       },
     ],
-    stream: true,
   });
 
-  for await (const chunk of stream) {
-    if (
-      chunk.event_type === "content.delta" &&
-      chunk.delta?.type === "text" &&
-      chunk.delta.text
-    ) {
-      process.stdout.write(chunk.delta.text);
-    }
-  }
-
+  process.stdout.write(response.text ?? "");
   process.stdout.write("\n");
 }
 
