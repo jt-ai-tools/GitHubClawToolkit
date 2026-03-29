@@ -1,0 +1,21 @@
+{
+  "name": "github-claw-dev-line-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build ./src/index.js --outfile ./dist/index.mjs --target browser --format esm",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "set": "wrangler secret bulk .dev.vars",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "hono": "^4.10.6"
+  },
+  "devDependencies": {
+    "node-addon-api": "^8.6.0",
+    "node-gyp": "^12.2.0",
+    "wrangler": "^4.75.0"
+  }
+}

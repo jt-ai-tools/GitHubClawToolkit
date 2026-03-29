@@ -1,0 +1,166 @@
+name: install-line-bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: GitHub Issue ID（可不填寫，留空會依 LINE source 動態找或建立唯一 Issue）
+        required: false
+        type: string
+      line_bot_id:
+        description: LINE Bot ID
+        required: true
+        type: string
+      line_bot_channel_id:
+        description: LINE Bot Channel ID
+        required: true
+        type: string
+      line_channel_secret:
+        description: LINE Bot Channel secret
+        required: true
+        type: string
+      line_channel_access_token:
+        description: LINE Bot Channel access token
+        required: true
+        type: string
+      line_default_reply_message:
+        description: LINE Bot 預設回應訊息
+        required: true
+        type: string
+      default_utc_offset:
+        description: DEFAULT_UTC_OFFSET（預設 +08:00）
+        required: false
+        default: "+08:00"
+        type: string
+
+run-name: "🚀 install-line-bot - ${{ inputs.line_bot_id }}"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-line-bot-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Line Worker source
+        uses: actions/checkout@v4
+        with:
+          repository: duotify/GitHubClawSkills
+          path: template-source
+          sparse-checkout: |
+            workers/line-bot
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: 安裝 Line Worker 依賴
+        shell: bash
+        working-directory: template-source/workers/line-bot
+        run: |
+          set -euo pipefail
+          bun install
+
+      - name: Build Line Worker
+        id: build
+        shell: bash
+        working-directory: template-source/workers/line-bot
+        run: |
+          set -euo pipefail
+          bun run build
+
+          echo "bundle_path=template-source/workers/line-bot/dist/index.mjs" >> "${GITHUB_OUTPUT}"
+
+      - name: 部署 Line Worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy ${{ steps.build.outputs.bundle_path }} --config template-source/workers/line-bot/wrangler.jsonc --name ${{ github.repository_owner }}-${{ github.event.repository.name }}-line-worker
+
+      - name: 同步 Line Worker secrets
+        shell: bash
+        working-directory: template-source/workers/line-bot
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_NAME: ${{ github.repository_owner }}-${{ github.event.repository.name }}-line-worker
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          LINE_BOT_ID: ${{ inputs.line_bot_id }}
+          LINE_CHANNEL_ID: ${{ inputs.line_bot_channel_id }}
+          LINE_CHANNEL_SECRET: ${{ inputs.line_channel_secret }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ inputs.line_channel_access_token }}
+          LINE_DEFAULT_REPLY_MESSAGE: ${{ inputs.line_default_reply_message }}
+          DEFAULT_UTC_OFFSET: ${{ inputs.default_utc_offset }}
+          GH_OWNER: ${{ github.repository_owner }}
+          GH_REPO: ${{ github.event.repository.name }}
+          GH_TOKEN: ${{ secrets.GH_ISSUES_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          put_secret() {
+            local key="$1"
+            local value="$2"
+
+            if [[ -z "${value}" ]]; then
+              echo "::error::${key} 缺少值"
+              exit 1
+            fi
+
+            printf '%s' "${value}" | bunx wrangler secret put "${key}" \
+              --config wrangler.jsonc \
+              --name "${WORKER_NAME}"
+          }
+
+          put_optional_secret() {
+            local key="$1"
+            local value="$2"
+
+            printf '%s' "${value}" | bunx wrangler secret put "${key}" \
+              --config wrangler.jsonc \
+              --name "${WORKER_NAME}"
+          }
+
+          put_optional_secret "ISSUE_NUMBER" "${ISSUE_NUMBER}"
+          put_secret "GH_OWNER" "${GH_OWNER}"
+          put_secret "GH_REPO" "${GH_REPO}"
+          put_secret "GH_TOKEN" "${GH_TOKEN}"
+          put_secret "LINE_BOT_ID" "${LINE_BOT_ID}"
+          put_secret "LINE_CHANNEL_ID" "${LINE_CHANNEL_ID}"
+          put_secret "LINE_CHANNEL_SECRET" "${LINE_CHANNEL_SECRET}"
+          put_secret "LINE_CHANNEL_ACCESS_TOKEN" "${LINE_CHANNEL_ACCESS_TOKEN}"
+          put_secret "LINE_DEFAULT_REPLY_MESSAGE" "${LINE_DEFAULT_REPLY_MESSAGE}"
+          put_secret "DEFAULT_UTC_OFFSET" "${DEFAULT_UTC_OFFSET}"
+          put_secret "LINE_ASSISTANT_UTC_OFFSET" "${DEFAULT_UTC_OFFSET}"
+          put_secret "LINE_WORKER_NAME" "${WORKER_NAME}"
+
+      - name: 寫入摘要
+        shell: bash
+        env:
+          WORKER_NAME: ${{ github.repository_owner }}-${{ github.event.repository.name }}-line-worker
+          LINE_BOT_ID: ${{ inputs.line_bot_id }}
+          LINE_CHANNEL_ID: ${{ inputs.line_bot_channel_id }}
+          WORKER_URL: ${{ steps.deploy.outputs.deployment-url }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: |
+          {
+            echo "### ✅ Line Worker 建立摘要"
+            echo ""
+            echo "| 項目 | 值 |"
+            echo "|---|---|"
+            echo "| Worker 名稱 | \`${WORKER_NAME}\` |"
+            echo "| Worker URL | [${WORKER_URL}](${WORKER_URL}) |"
+            echo "| LINE Bot ID | \`${LINE_BOT_ID}\` |"
+            echo "| LINE Bot Channel ID | \`${LINE_CHANNEL_ID}\` |"
+            echo "| Issue 綁定模式 | ${{ inputs.issue_number != '' && 'fixed' || 'dynamic-by-source' }} |"
+            echo "| 固定 Issue | ${ISSUE_NUMBER:-_dynamic_} |"
+            echo "| DEFAULT_UTC_OFFSET | ${{ inputs.default_utc_offset }} |"
+          } >> "${GITHUB_STEP_SUMMARY}"

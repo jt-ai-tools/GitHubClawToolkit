@@ -1,0 +1,18 @@
+{
+  "name": "line-worker",
+  "main": "src/index.js",
+  "compatibility_date": "2026-03-11",
+  "observability": {
+    "enabled": true
+  },
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "GH_API_BASE_URL": "https://api.github.com",
+    "LINE_API_BASE_URL": "https://api.line.me",
+    "LINE_DATA_API_BASE_URL": "https://api-data.line.me",
+    "LINE_WEBHOOK_PATH": "/line/webhook",
+    "GH_API_VERSION": "2022-11-28",
+    "USER_AGENT": "GitHubClawDev-LineWorker/0.1.0"
+  }
+}
