@@ -24,6 +24,10 @@ inputs:
     description: 成功擷取到 session.error 訊息時，寫在訊息下方的補充文字
     required: false
     default: '若您不確定如何處理，請直接將本頁面的截圖或網址傳送給開發人員。'
+  no_auth_message:
+    description: 當輸出檔中偵測到認證失敗錯誤時寫入 result_file 的訊息
+    required: false
+    default: "看起來 Copilot CLI 無法執行，可能是以下原因：\n- 尚未設定 COPILOT_GITHUB_TOKEN 變數\n- 已設定，但金鑰已過期或失效\n\n建議檢查一下相關設定，或重新產生一組新的金鑰後再試一次。"
 
 runs:
   using: composite
@@ -37,6 +41,7 @@ runs:
         MISSING_SESSION_ERROR_MESSAGE: ${{ inputs.missing_session_error_message }}
         MESSAGE_PREFIX: ${{ inputs.message_prefix }}
         MESSAGE_SUFFIX: ${{ inputs.message_suffix }}
+        NO_AUTH_MESSAGE: ${{ inputs.no_auth_message }}
       run: |
         set -euo pipefail
 
@@ -57,7 +62,14 @@ runs:
             process.exit(0);
           }
 
-          const lines = fs.readFileSync(outputFile, "utf8").split(/\r?\n/).filter(Boolean);
+          const content = fs.readFileSync(outputFile, "utf8");
+
+          if (content.includes("Error: No authentication information found.")) {
+            fs.writeFileSync(resultFile, `${process.env.NO_AUTH_MESSAGE}\n`);
+            process.exit(0);
+          }
+
+          const lines = content.split(/\r?\n/).filter(Boolean);
           let message = "";
 
           for (const line of lines) {
