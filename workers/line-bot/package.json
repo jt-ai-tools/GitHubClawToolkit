@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "bun build ./src/index.js --outfile ./dist/index.mjs --target browser --format esm",
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "set": "wrangler secret bulk .dev.vars",
+    "dev": "test -n \"$WORKER_NAME\" && bunx wrangler dev --name \"$WORKER_NAME\"",
+    "deploy": "bun run build && test -n \"$WORKER_NAME\" && bunx wrangler deploy --name \"$WORKER_NAME\"",
+    "set": "test -n \"$WORKER_NAME\" && bunx wrangler secret bulk .dev.vars --name \"$WORKER_NAME\"",
     "test": "node --test"
   },
   "dependencies": {

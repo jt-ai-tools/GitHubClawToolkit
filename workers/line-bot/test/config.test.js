@@ -5,13 +5,12 @@ import { ConfigError, getConfig } from '../src/config.js';
 
 test('getConfig parses fixed worker issue settings', () => {
   const config = getConfig({
-    GH_TOKEN: 'github-token',
+    CLAW_SYS_GITHUB_TOKEN: 'github-token',
     LINE_CHANNEL_SECRET: 'line-secret',
     LINE_CHANNEL_ACCESS_TOKEN: 'line-access-token',
-    GH_OWNER: 'octo',
-    GH_REPO: 'fallback',
+    GITHUB_OWNER: 'octo',
+    GITHUB_REPO: 'fallback',
     ISSUE_NUMBER: '123',
-    LINE_WORKER_NAME: 'my-line-worker',
   });
 
   assert.equal(config.github.repoFullName, 'octo/fallback');
@@ -20,39 +19,37 @@ test('getConfig parses fixed worker issue settings', () => {
   assert.equal(config.assistant.utcOffsetMinutes, 8 * 60);
   assert.equal(config.assistant.defaultReplyText, null);
   assert.equal(config.line.targetIssueNumber, 123);
-  assert.equal(config.line.workerName, 'my-line-worker');
+  assert.equal(config.line.workerName, 'octo-fallback-line-worker');
   assert.equal(config.line.targetIssueUrl, 'https://github.com/octo/fallback/issues/123');
 });
 
 test('getConfig tolerates quoted env values from dotenv-style deployment files', () => {
   const config = getConfig({
-    GH_TOKEN: '"github-token"',
+    CLAW_SYS_GITHUB_TOKEN: '"github-token"',
     LINE_CHANNEL_SECRET: '"line-secret"',
     LINE_CHANNEL_ACCESS_TOKEN: '"line-access-token"',
-    GH_OWNER: '"octo"',
-    GH_REPO: '"fallback"',
+    GITHUB_OWNER: '"octo"',
+    GITHUB_REPO: '"fallback"',
     ISSUE_NUMBER: '"123"',
-    LINE_WORKER_NAME: '"my-line-worker"',
   });
 
   assert.equal(config.github.repoFullName, 'octo/fallback');
   assert.equal(config.line.issueBindingMode, 'fixed');
   assert.equal(config.line.targetIssueNumber, 123);
-  assert.equal(config.line.workerName, 'my-line-worker');
+  assert.equal(config.line.workerName, 'octo-fallback-line-worker');
   assert.equal(config.assistant.defaultReplyText, null);
 });
 
 test('getConfig allows overriding fixed API defaults from vars', () => {
   const config = getConfig({
-    GH_TOKEN: 'github-token',
+    CLAW_SYS_GITHUB_TOKEN: 'github-token',
     LINE_CHANNEL_SECRET: 'line-secret',
     LINE_CHANNEL_ACCESS_TOKEN: 'line-access-token',
-    GH_OWNER: 'octo',
-    GH_REPO: 'fallback',
+    GITHUB_OWNER: 'octo',
+    GITHUB_REPO: 'fallback',
     ISSUE_NUMBER: '123',
-    GH_API_BASE_URL: 'https://example.github.local',
-    GH_API_VERSION: '2099-01-01',
-    USER_AGENT: 'Custom-LineWorker/1.0.0',
+    GITHUB_API_BASE_URL: 'https://example.github.local',
+    GITHUB_API_VERSION: '2099-01-01',
     LINE_API_BASE_URL: 'https://example.line.local',
     LINE_DATA_API_BASE_URL: 'https://example-data.line.local',
     LINE_WEBHOOK_PATH: '/webhooks/line',
@@ -60,7 +57,6 @@ test('getConfig allows overriding fixed API defaults from vars', () => {
 
   assert.equal(config.github.apiBaseUrl, 'https://example.github.local');
   assert.equal(config.github.apiVersion, '2099-01-01');
-  assert.equal(config.github.userAgent, 'Custom-LineWorker/1.0.0');
   assert.equal(config.line.apiBaseUrl, 'https://example.line.local');
   assert.equal(config.line.dataApiBaseUrl, 'https://example-data.line.local');
   assert.equal(config.line.webhookPath, '/webhooks/line');
@@ -68,11 +64,11 @@ test('getConfig allows overriding fixed API defaults from vars', () => {
 
 test('getConfig reads the optional default LINE reply message', () => {
   const config = getConfig({
-    GH_TOKEN: 'github-token',
+    CLAW_SYS_GITHUB_TOKEN: 'github-token',
     LINE_CHANNEL_SECRET: 'line-secret',
     LINE_CHANNEL_ACCESS_TOKEN: 'line-access-token',
-    GH_OWNER: 'octo',
-    GH_REPO: 'fallback',
+    GITHUB_OWNER: 'octo',
+    GITHUB_REPO: 'fallback',
     LINE_DEFAULT_REPLY_MESSAGE: '"已收到訊息，稍後回覆你。"',
   });
 
@@ -86,9 +82,9 @@ test('getConfig reads the optional default LINE reply message', () => {
 
 test('getConfig allows dynamic issue binding when ISSUE_NUMBER is omitted', () => {
   const config = getConfig({
-    GH_TOKEN: 'github-token',
-    GH_OWNER: 'octo',
-    GH_REPO: 'fallback',
+    CLAW_SYS_GITHUB_TOKEN: 'github-token',
+    GITHUB_OWNER: 'octo',
+    GITHUB_REPO: 'fallback',
     LINE_CHANNEL_SECRET: 'line-secret',
     LINE_CHANNEL_ACCESS_TOKEN: 'line-access-token',
   });
@@ -102,9 +98,9 @@ test('getConfig rejects invalid ISSUE_NUMBER values', () => {
   assert.throws(
     () =>
       getConfig({
-        GH_TOKEN: 'github-token',
-        GH_OWNER: 'octo',
-        GH_REPO: 'fallback',
+        CLAW_SYS_GITHUB_TOKEN: 'github-token',
+        GITHUB_OWNER: 'octo',
+        GITHUB_REPO: 'fallback',
         LINE_CHANNEL_SECRET: 'line-secret',
         LINE_CHANNEL_ACCESS_TOKEN: 'line-access-token',
         ISSUE_NUMBER: 'abc',
@@ -119,13 +115,13 @@ test('getConfig requires a fixed GitHub repo', () => {
   assert.throws(
     () =>
       getConfig({
-        GH_TOKEN: 'github-token',
+        CLAW_SYS_GITHUB_TOKEN: 'github-token',
         LINE_CHANNEL_SECRET: 'line-secret',
         LINE_CHANNEL_ACCESS_TOKEN: 'line-access-token',
         ISSUE_NUMBER: '123',
       }),
     (error) =>
       error instanceof ConfigError
-      && /GH_OWNER and GH_REPO are required/.test(error.message),
+      && /GITHUB_OWNER and GITHUB_REPO are required/.test(error.message),
   );
 });

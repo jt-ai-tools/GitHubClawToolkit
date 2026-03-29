@@ -12,11 +12,10 @@ const DEFAULT_ISSUE_URL = `https://github.com/${DEFAULT_REPO_FULL_NAME}/issues/$
 
 function createEnv(overrides = {}) {
   return {
-    GH_TOKEN: 'github-token',
-    GH_OWNER: DEFAULT_OWNER,
-    GH_REPO: DEFAULT_REPO,
+    CLAW_SYS_GITHUB_TOKEN: 'github-token',
+    GITHUB_OWNER: DEFAULT_OWNER,
+    GITHUB_REPO: DEFAULT_REPO,
     ISSUE_NUMBER: String(DEFAULT_ISSUE_NUMBER),
-    LINE_WORKER_NAME: 'line-worker-test',
     LINE_CHANNEL_SECRET: 'line-secret',
     LINE_CHANNEL_ACCESS_TOKEN: 'line-access-token',
     ...overrides,
@@ -232,7 +231,7 @@ test('health endpoint returns fixed LineWorker metadata', async () => {
   assert.equal(payload.webhookPath, '/line/webhook');
   assert.equal(payload.defaultRepo, DEFAULT_REPO_FULL_NAME);
   assert.equal(payload.issueBindingMode, 'fixed');
-  assert.equal(payload.workerName, 'line-worker-test');
+  assert.equal(payload.workerName, 'octo-fallback-line-worker');
   assert.equal(payload.targetIssueNumber, DEFAULT_ISSUE_NUMBER);
   assert.equal(payload.targetIssueUrl, DEFAULT_ISSUE_URL);
 });
@@ -240,14 +239,14 @@ test('health endpoint returns fixed LineWorker metadata', async () => {
 test('status endpoint shows which GitHub issue the worker is bound to', async () => {
   const response = await worker.fetch(
     new Request('https://example.com/status'),
-    createEnv({ LINE_WORKER_NAME: 'customer-support-line' }),
+    createEnv(),
     createContext(),
   );
   const payload = await response.json();
 
   assert.equal(response.status, 200);
   assert.equal(payload.issueBindingMode, 'fixed');
-  assert.equal(payload.workerName, 'customer-support-line');
+  assert.equal(payload.workerName, 'octo-fallback-line-worker');
   assert.equal(payload.targetIssueNumber, DEFAULT_ISSUE_NUMBER);
   assert.equal(payload.targetIssueUrl, DEFAULT_ISSUE_URL);
 });
@@ -257,7 +256,6 @@ test('status endpoint shows dynamic issue binding when ISSUE_NUMBER is omitted',
     new Request('https://example.com/status'),
     createEnv({
       ISSUE_NUMBER: undefined,
-      LINE_WORKER_NAME: 'customer-support-line',
     }),
     createContext(),
   );
@@ -265,7 +263,7 @@ test('status endpoint shows dynamic issue binding when ISSUE_NUMBER is omitted',
 
   assert.equal(response.status, 200);
   assert.equal(payload.issueBindingMode, 'dynamic-by-source');
-  assert.equal(payload.workerName, 'customer-support-line');
+  assert.equal(payload.workerName, 'octo-fallback-line-worker');
   assert.equal(payload.targetIssueNumber, null);
   assert.equal(payload.targetIssueUrl, null);
 });
@@ -375,7 +373,7 @@ test('group text message comments on the fixed deployment issue with source meta
     const commentPayload = JSON.parse(commentCall.init.body);
     assert.match(commentPayload.body, /^<!-- line-meta: /);
     assert.match(commentPayload.body, /## LINE text message/);
-    assert.match(commentPayload.body, /- Worker name: line-worker-test/);
+    assert.match(commentPayload.body, /- Worker name: octo-fallback-line-worker/);
     assert.match(
       commentPayload.body,
       /- Worker issue: #501 \(https:\/\/github\.com\/octo\/fallback\/issues\/501\)/,

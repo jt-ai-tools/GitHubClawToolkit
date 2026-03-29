@@ -9,8 +9,7 @@ const DEFAULT_GH_API_BASE_URL = 'https://api.github.com';
 const DEFAULT_LINE_API_BASE_URL = 'https://api.line.me';
 const DEFAULT_LINE_DATA_API_BASE_URL = 'https://api-data.line.me';
 const LINE_WEBHOOK_PATH = '/line/webhook';
-const GH_API_VERSION = '2022-11-28';
-const USER_AGENT = 'GitHubClawDev-LineWorker/0.1.0';
+const GITHUB_API_VERSION = '2022-11-28';
 
 export class ConfigError extends Error {
   constructor(message) {
@@ -21,7 +20,7 @@ export class ConfigError extends Error {
 
 function createAssistantConfig(env) {
   return getAssistantConfigFromEnv(env, {
-    utcOffsetKey: 'LINE_ASSISTANT_UTC_OFFSET',
+    utcOffsetKey: 'DEFAULT_UTC_OFFSET',
     defaultReplyTextKey: 'LINE_DEFAULT_REPLY_MESSAGE',
     defaultUtcOffsetMinutes: 8 * 60,
   });
@@ -59,7 +58,7 @@ export function getConfig(env) {
 
   if (!defaultGithub) {
     throw createError(
-      'GH_OWNER and GH_REPO are required for LineWorker.',
+      'GITHUB_OWNER and GITHUB_REPO are required for LineWorker.',
     );
   }
 
@@ -68,25 +67,23 @@ export function getConfig(env) {
     'ISSUE_NUMBER',
     createError,
   );
-  const workerName = optionalString(env, 'LINE_WORKER_NAME');
 
   return {
     github: {
       owner: defaultGithub.owner,
       repo: defaultGithub.repo,
       repoFullName: defaultGithub.repoFullName,
-      token: requireString(env, 'GH_TOKEN', { createError }),
+      token: requireString(env, 'CLAW_SYS_GITHUB_TOKEN', { createError }),
       apiBaseUrl: getOptionalConfig(
         env,
-        'GH_API_BASE_URL',
+        'GITHUB_API_BASE_URL',
         DEFAULT_GH_API_BASE_URL,
       ),
       apiVersion: getOptionalConfig(
         env,
-        'GH_API_VERSION',
-        GH_API_VERSION,
+        'GITHUB_API_VERSION',
+        GITHUB_API_VERSION,
       ),
-      userAgent: getOptionalConfig(env, 'USER_AGENT', USER_AGENT),
     },
     line: {
       channelSecret: requireString(env, 'LINE_CHANNEL_SECRET', { createError }),
@@ -109,7 +106,7 @@ export function getConfig(env) {
       targetIssueUrl: targetIssueNumber
         ? `https://github.com/${defaultGithub.owner}/${defaultGithub.repo}/issues/${targetIssueNumber}`
         : null,
-      workerName,
+      workerName: `${defaultGithub.owner}-${defaultGithub.repo}-line-worker`,
     },
     assistant: createAssistantConfig(env),
   };

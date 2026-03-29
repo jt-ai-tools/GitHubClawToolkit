@@ -38,12 +38,12 @@ export function parseDefaultGitHub(
   env,
   { createError = (message) => new Error(message) } = {},
 ) {
-  const owner = optionalString(env, 'GH_OWNER');
-  const repo = optionalString(env, 'GH_REPO');
+  const owner = optionalString(env, 'GITHUB_OWNER');
+  const repo = optionalString(env, 'GITHUB_REPO');
 
   if ((owner && !repo) || (!owner && repo)) {
     throw createError(
-      'GH_OWNER and GH_REPO must be provided together.',
+      'GITHUB_OWNER and GITHUB_REPO must be provided together.',
     );
   }
 

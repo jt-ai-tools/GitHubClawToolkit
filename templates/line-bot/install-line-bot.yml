@@ -25,7 +25,7 @@ on:
         type: string
       line_default_reply_message:
         description: LINE Bot 預設回應訊息
-        required: true
+        required: false
         type: string
       default_utc_offset:
         description: DEFAULT_UTC_OFFSET（預設 +08:00）
@@ -66,7 +66,7 @@ jobs:
         working-directory: template-source/workers/line-bot
         run: |
           set -euo pipefail
-          bun install
+          bun install --frozen-lockfile
 
       - name: Build Line Worker
         id: build
@@ -100,9 +100,9 @@ jobs:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ inputs.line_channel_access_token }}
           LINE_DEFAULT_REPLY_MESSAGE: ${{ inputs.line_default_reply_message }}
           DEFAULT_UTC_OFFSET: ${{ inputs.default_utc_offset }}
-          GH_OWNER: ${{ github.repository_owner }}
-          GH_REPO: ${{ github.event.repository.name }}
-          GH_TOKEN: ${{ secrets.GH_ISSUES_TOKEN }}
+          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO: ${{ github.event.repository.name }}
+          CLAW_SYS_GITHUB_TOKEN: ${{ secrets.CLAW_SYS_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -130,18 +130,15 @@ jobs:
           }
 
           put_optional_secret "ISSUE_NUMBER" "${ISSUE_NUMBER}"
-          put_secret "GH_OWNER" "${GH_OWNER}"
-          put_secret "GH_REPO" "${GH_REPO}"
-          put_secret "GH_TOKEN" "${GH_TOKEN}"
+          put_secret "GITHUB_OWNER" "${GITHUB_OWNER}"
+          put_secret "GITHUB_REPO" "${GITHUB_REPO}"
+          put_secret "CLAW_SYS_GITHUB_TOKEN" "${CLAW_SYS_GITHUB_TOKEN}"
           put_secret "LINE_BOT_ID" "${LINE_BOT_ID}"
           put_secret "LINE_CHANNEL_ID" "${LINE_CHANNEL_ID}"
           put_secret "LINE_CHANNEL_SECRET" "${LINE_CHANNEL_SECRET}"
           put_secret "LINE_CHANNEL_ACCESS_TOKEN" "${LINE_CHANNEL_ACCESS_TOKEN}"
-          put_secret "LINE_DEFAULT_REPLY_MESSAGE" "${LINE_DEFAULT_REPLY_MESSAGE}"
+          put_optional_secret "LINE_DEFAULT_REPLY_MESSAGE" "${LINE_DEFAULT_REPLY_MESSAGE}"
           put_secret "DEFAULT_UTC_OFFSET" "${DEFAULT_UTC_OFFSET}"
-          put_secret "LINE_ASSISTANT_UTC_OFFSET" "${DEFAULT_UTC_OFFSET}"
-          put_secret "LINE_WORKER_NAME" "${WORKER_NAME}"
-
       - name: 寫入摘要
         shell: bash
         env:
