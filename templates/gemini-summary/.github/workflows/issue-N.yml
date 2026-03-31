@@ -16,6 +16,10 @@ on:
         description: 'Existing issue comment ID to reuse for progress updates'
         required: false
         type: string
+      user_comment_id:
+        description: 'User comment ID used to locate artifacts/{user_comment_id}/user.md'
+        required: false
+        type: string
       event_source:
         description: 'Who is triggering this workflow: cron or issue'
         required: false
