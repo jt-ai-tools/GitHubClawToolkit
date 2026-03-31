@@ -34,11 +34,6 @@ on:
         required: false
         type: string
         default: ''
-      model:
-        description: 'Vertex 圖片生成模型名稱'
-        required: false
-        default: 'gemini-2.5-flash-image'
-        type: string
   repository_dispatch:
     types: [create-image]
 
@@ -57,7 +52,7 @@ env:
   COMMENT_ID: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.comment_id || inputs.comment_id }}"
   USER_COMMENT_ID: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.user_comment_id || inputs.user_comment_id }}"
   ISSUE_BRANCH: "issue-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.issue_number || inputs.issue_number }}"
-  MODEL: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.model || inputs.model || 'gemini-2.5-flash-image' }}"
+  MODEL: "${{ vars.VERTEXAI_NANOBANANA_MODEL || 'google/gemini-3-pro-image-preview' }}"
   VERTEXAI_API_KEY: "${{ secrets.VERTEXAI_API_KEY }}"
 
 jobs:
@@ -72,14 +67,6 @@ jobs:
           ref: "${{ env.ISSUE_BRANCH }}"
           fetch-depth: 1
           token: "${{ github.token }}"
-
-      - name: Checkout issue branch
-        uses: actions/checkout@v4
-        with:
-          ref: "${{ env.ISSUE_BRANCH }}"
-          fetch-depth: 1
-          token: "${{ github.token }}"
-          path: "issue-worktree"
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -108,7 +95,6 @@ jobs:
           TEMPLATE_ROOT: "."
           GENERATE_SCRIPT: "./scripts/generate-image.ts"
           NAME_PREFIX: "image-${{ env.COMMENT_ID || env.ISSUE_NUMBER }}"
-          ISSUE_WORKTREE: "./issue-worktree"
         run: |
           set -euo pipefail
 
@@ -161,7 +147,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          cd "${ISSUE_WORKTREE}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -186,8 +171,8 @@ jobs:
         if: failure() && steps.generate.conclusion == 'failure'
         uses: duotify/GitHubClawToolkit/actions/error-handler-action@v1.1.0
         with:
-          output_file: "issue-worktree/artifacts/${{ env.COMMENT_ID }}/result.md"
-          result_file: "issue-worktree/artifacts/${{ env.COMMENT_ID }}/result.md"
+          output_file: "artifacts/${{ env.COMMENT_ID }}/result.md"
+          result_file: "artifacts/${{ env.COMMENT_ID }}/result.md"
 
       - name: 執行結果回報
         if: always()
@@ -195,4 +180,4 @@ jobs:
         with:
           issue_number: ${{ env.ISSUE_NUMBER }}
           comment_id: ${{ env.COMMENT_ID }}
-          message_file: "issue-worktree/artifacts/${{ env.COMMENT_ID }}/result.md"
+          message_file: "artifacts/${{ env.COMMENT_ID }}/result.md"

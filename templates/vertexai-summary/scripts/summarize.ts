@@ -2,7 +2,6 @@ import { GoogleGenAI } from '@google/genai';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const MODEL = 'gemini-2.5-flash';
 const TEMPLATE_ROOT = path.resolve(process.env.TEMPLATE_ROOT || process.cwd());
 
 function normalizeText(value: unknown): string {
@@ -78,6 +77,7 @@ async function main(): Promise<void> {
 
   const promptFile = process.env.PROMPT_FILE;
   if (!promptFile) throw new Error('缺少 PROMPT_FILE 環境變數');
+  const model = normalizeText(process.env.VERTEXAI_SUMMARY_MODEL) || 'google/gemini-2.5-flash';
 
   const userPrompt = await readUserPrompt(promptFile);
   const contextJsonlPath = await resolveContextJsonlPath();
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
   });
 
   const result = await ai.models.generateContent({
-    model: MODEL,
+    model,
     config: {
       systemInstruction: systemPrompt,
       tools: [{ googleSearch: {} }],
