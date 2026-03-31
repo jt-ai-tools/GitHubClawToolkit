@@ -74,7 +74,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
-      - run: bun install --no-fund --no-audit @google/genai @mozilla/readability linkedom
+      - run: bun install --no-fund --no-audit @google/genai
 
       - name: 狀態更新處理
         if: ${{ (github.event_name == 'repository_dispatch' && github.event.client_payload.event_data == 'StatusUpdate') || inputs.event_data == 'StatusUpdate' }}
@@ -130,7 +130,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add "${ISSUE_DIR}/result.md"
+          if [[ -f "artifacts/${COMMENT_ID}/result.md" ]]; then
+            git add "artifacts/${COMMENT_ID}/result.md"
+          fi
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else

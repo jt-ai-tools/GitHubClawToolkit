@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 function normalizeText(value: unknown): string {
@@ -62,7 +62,9 @@ async function readSystemPrompt(): Promise<string> {
   const systemPromptFile = process.env.SYSTEM_PROMPT_FILE
     ? path.resolve(process.env.SYSTEM_PROMPT_FILE)
     : path.join(TEMPLATE_ROOT, 'SYSTEM.md');
-  return readFile(systemPromptFile, 'utf8');
+  const systemPrompt = normalizeText(await readFile(systemPromptFile, 'utf8'));
+  if (!systemPrompt) throw new Error(`${systemPromptFile} 內容為空，無法生成圖片。`);
+  return systemPrompt;
 }
 
 function buildUserPrompt(params: {
@@ -81,6 +83,7 @@ function buildUserPrompt(params: {
     '"""',
     '',
     '請先整合需求與上下文，輸出可直接用於影像生成的最終提示詞。',
+    '若需要補充最新的公開資訊或查證內容，可以使用 Google Search。',
   ].join('\n');
 }
 
@@ -99,8 +102,7 @@ async function main(): Promise<void> {
   const userPrompt = await readUserPrompt(promptFile);
   const contextJsonlPath = await resolveContextJsonlPath();
   const contextJsonl = await readContextJsonl(contextJsonlPath);
-  const systemPrompt = normalizeText(await readSystemPrompt());
-  if (!systemPrompt) throw new Error('SYSTEM.md 內容為空，無法執行圖片生成。');
+  const systemPrompt = await readSystemPrompt();
 
   const ai = new GoogleGenAI({
     vertexai: true,
@@ -115,6 +117,7 @@ async function main(): Promise<void> {
     model,
     config: {
       systemInstruction: systemPrompt,
+      tools: [{ googleSearch: {} }],
     },
     contents: [{
       role: 'user',
@@ -142,7 +145,7 @@ async function main(): Promise<void> {
   }
 
   const resolvedIssueDir = path.resolve(issueDir);
-  await Bun.$`mkdir -p ${resolvedIssueDir}`;
+  await mkdir(resolvedIssueDir, { recursive: true });
 
   let idx = 1;
   const savedFiles: string[] = [];

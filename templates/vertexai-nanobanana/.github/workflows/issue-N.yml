@@ -95,9 +95,6 @@ jobs:
           VERTEXAI_API_KEY: ${{ env.VERTEXAI_API_KEY }}
           NANOBANANA_MODEL: ${{ env.MODEL }}
           ISSUE_DIR: "./artifacts/${{ env.COMMENT_ID }}"
-          SYSTEM_PROMPT_FILE: "./SYSTEM.md"
-          TEMPLATE_ROOT: "."
-          GENERATE_SCRIPT: "./scripts/generate-image.ts"
           NAME_PREFIX: "image-${{ env.COMMENT_ID || env.ISSUE_NUMBER }}"
         run: |
           set -euo pipefail
@@ -111,7 +108,7 @@ jobs:
           fi
 
           echo "::notice::將使用 ${PROMPT_FILE} 作為 user prompt"
-          output="$(PROMPT_FILE="${PROMPT_FILE}" SYSTEM_PROMPT_FILE="${SYSTEM_PROMPT_FILE}" TEMPLATE_ROOT="${TEMPLATE_ROOT}" ISSUE_DIR="${ISSUE_DIR}" NAME_PREFIX="${NAME_PREFIX}" NANOBANANA_MODEL="${NANOBANANA_MODEL}" bun run "${GENERATE_SCRIPT}")"
+          output="$(PROMPT_FILE="${PROMPT_FILE}" ISSUE_DIR="${ISSUE_DIR}" NAME_PREFIX="${NAME_PREFIX}" NANOBANANA_MODEL="${NANOBANANA_MODEL}" bun run ./scripts/generate-image.ts)"
           echo "${output}"
 
           saved_files="$(echo "${output}" | grep '^Saved: ' | sed 's/^Saved: //' | paste -sd ',' -)"
