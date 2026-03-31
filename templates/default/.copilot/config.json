@@ -2,6 +2,7 @@
   "auto_update": false,
   "experimental": true,
   "model": "gpt-5.4-mini",
-  "reasoning_effort": "medium"
+  "effortLevel": "medium"
 }
+
 
