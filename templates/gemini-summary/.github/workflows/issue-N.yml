@@ -1,5 +1,5 @@
 # 內容摘要 workflow。
-# 使用 Gemini 模型（內嵌 Node.js 腳本），從根目錄的 issue.md 讀取目標 URL 或檔案路徑，
+# 使用 Gemini 模型（內嵌 Node.js 腳本），從 artifacts/<comment-id>/user.md 讀取 user prompt，並參考根目錄 jsonl 上下文，
 # 生成 Markdown 摘要並 commit 到 issue branch，最後回寫 issue comment。
 #
 # 認證模式：僅支援 Gemini API Key（GEMINI_API_KEY secret）。
@@ -52,7 +52,8 @@ env:
   COMMENT_ID: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.comment_id || inputs.comment_id }}"
   USER_COMMENT_ID: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.user_comment_id || inputs.user_comment_id }}"
   ISSUE_BRANCH: "issue-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.issue_number || inputs.issue_number }}"
-  SUMMARY_MODEL: "${{ vars.GEMINI_SUMMARY_MODEL || 'gemini-3-flash-preview' }}"
+  SUMMARY_MODEL: "${{ vars.GEMINI_SUMMARY_MODEL || 'gemini-2.5-flash' }}"
+  MEMORY_LIMIT: "10"
   GEMINI_API_KEY: "${{ secrets.GEMINI_API_KEY }}"
 
 jobs:
@@ -75,8 +76,6 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
-      - run: bun install --no-fund --no-audit @google/genai @mozilla/readability linkedom
-
       - name: 狀態更新處理
         if: ${{ (github.event_name == 'repository_dispatch' && github.event.client_payload.event_data == 'StatusUpdate') || inputs.event_data == 'StatusUpdate' }}
         shell: bash
@@ -97,34 +96,33 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ env.GEMINI_API_KEY }}
           GEMINI_SUMMARY_MODEL: ${{ env.SUMMARY_MODEL }}
+          MEMORY_LIMIT: ${{ env.MEMORY_LIMIT }}
           ISSUE_DIR: "./artifacts/${{ env.COMMENT_ID }}"
-          PROMPT_FILE: "./issue.md"
-          SUMMARIZE_SCRIPT: "${{ github.workspace }}/scripts/summarize-inline.mjs"
+          SYSTEM_PROMPT_FILE: "./SYSTEM.md"
+          TEMPLATE_ROOT: "."
+          SUMMARY_SCRIPT: "./scripts/summarize-inline.ts"
         run: |
           set -euo pipefail
 
+          prompt_comment_id="${USER_COMMENT_ID:-${COMMENT_ID}}"
+          PROMPT_FILE="./artifacts/${prompt_comment_id}/user.md"
+          context_jsonl_file="./issue.jsonl"
+
           if [[ ! -f "${PROMPT_FILE}" ]]; then
-            echo "::error::${PROMPT_FILE} 不存在。請確認根目錄已正確建立並包含 issue.md。"
+            echo "::error::${PROMPT_FILE} 不存在。請確認 issue branch 已建立 artifacts/${prompt_comment_id}/user.md。"
             exit 1
           fi
 
-          # 從 issue.md 全文中找第一個 URL；若無 URL 則取第一個非 # 開頭的非空行（檔案路徑情境）
-          INPUT_TARGET="$(grep -m1 -oE 'https?://[^[:space:]]+' "${PROMPT_FILE}" | head -1)"
-          if [[ -z "${INPUT_TARGET}" ]]; then
-            INPUT_TARGET="$(grep -m1 -v '^[[:space:]]*#' "${PROMPT_FILE}" | grep -m1 '[^[:space:]]' | tr -d '[:space:]')"
-          fi
-          if [[ -z "${INPUT_TARGET}" ]]; then
-            echo "::error::${PROMPT_FILE} 中找不到有效的 URL 或檔案路徑"
+          if [[ ! -f "${context_jsonl_file}" ]]; then
+            echo "::error::${context_jsonl_file} 不存在。請確認 issue branch 根目錄已建立 issue.jsonl。"
             exit 1
           fi
 
-          echo "::notice::摘要目標：${INPUT_TARGET}"
-
-          # 使用 GoogleGenAI SDK 呼叫 Gemini 生成摘要
-          summary="$(INPUT_TARGET="${INPUT_TARGET}" bun run "${SUMMARIZE_SCRIPT}")"
+          echo "::notice::將使用 ${PROMPT_FILE} 作為 user prompt"
+          summary="$(PROMPT_FILE="${PROMPT_FILE}" CONTEXT_JSONL_FILE="${context_jsonl_file}" SYSTEM_PROMPT_FILE="${SYSTEM_PROMPT_FILE}" TEMPLATE_ROOT="${TEMPLATE_ROOT}" MEMORY_LIMIT="${MEMORY_LIMIT}" bun run "${SUMMARY_SCRIPT}")"
 
           if [[ -z "${summary// /}" ]]; then
-            echo "::error::summarize-inline.mjs 未回傳任何摘要內容"
+            echo "::error::scripts/summarize-inline.ts 未回傳任何摘要內容"
             exit 1
           fi
 
