@@ -53,6 +53,7 @@ env:
   USER_COMMENT_ID: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.user_comment_id || inputs.user_comment_id }}"
   ISSUE_BRANCH: "issue-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.issue_number || inputs.issue_number }}"
   SUMMARY_MODEL: "${{ vars.VERTEXAI_SUMMARY_MODEL || 'google/gemini-2.5-flash' }}"
+  MEMORY_LIMIT: "10"
   VERTEXAI_SUMMARY_API_KEY: "${{ secrets.VERTEXAI_SUMMARY_API_KEY }}"
 
 jobs:
@@ -97,6 +98,7 @@ jobs:
         env:
           VERTEXAI_SUMMARY_API_KEY: ${{ env.VERTEXAI_SUMMARY_API_KEY }}
           VERTEXAI_SUMMARY_MODEL: ${{ env.SUMMARY_MODEL }}
+          MEMORY_LIMIT: ${{ env.MEMORY_LIMIT }}
           ISSUE_DIR: "./artifacts/${{ env.COMMENT_ID }}"
           SYSTEM_PROMPT_FILE: "./SYSTEM.md"
           TEMPLATE_ROOT: "."
@@ -106,20 +108,20 @@ jobs:
 
           prompt_comment_id="${USER_COMMENT_ID:-${COMMENT_ID}}"
           PROMPT_FILE="./artifacts/${prompt_comment_id}/user.md"
-          context_jsonl_file="$(find . -maxdepth 1 -type f -name '*.jsonl' | head -n 1 || true)"
+          context_jsonl_file="./issue.jsonl"
 
           if [[ ! -f "${PROMPT_FILE}" ]]; then
             echo "::error::${PROMPT_FILE} 不存在。請確認 issue branch 已建立 artifacts/${prompt_comment_id}/user.md。"
             exit 1
           fi
 
-          if [[ -z "${context_jsonl_file}" ]]; then
-            echo "::error::找不到 issue branch 根目錄 jsonl 檔案。"
+          if [[ ! -f "${context_jsonl_file}" ]]; then
+            echo "::error::${context_jsonl_file} 不存在。請確認 issue branch 根目錄已建立 issue.jsonl。"
             exit 1
           fi
 
           echo "::notice::將使用 ${PROMPT_FILE} 作為 user prompt"
-          summary="$(PROMPT_FILE="${PROMPT_FILE}" CONTEXT_JSONL_FILE="${context_jsonl_file}" SYSTEM_PROMPT_FILE="${SYSTEM_PROMPT_FILE}" TEMPLATE_ROOT="${TEMPLATE_ROOT}" bun run "${SUMMARY_SCRIPT}")"
+          summary="$(PROMPT_FILE="${PROMPT_FILE}" CONTEXT_JSONL_FILE="${context_jsonl_file}" SYSTEM_PROMPT_FILE="${SYSTEM_PROMPT_FILE}" TEMPLATE_ROOT="${TEMPLATE_ROOT}" MEMORY_LIMIT="${MEMORY_LIMIT}" bun run "${SUMMARY_SCRIPT}")"
 
           if [[ -z "${summary// /}" ]]; then
             echo "::error::scripts/summarize.ts 未回傳任何摘要內容"
@@ -127,14 +129,13 @@ jobs:
           fi
 
           mkdir -p "${ISSUE_DIR}"
-          result_file="${ISSUE_DIR}/result.md"
 
           {
             printf '📝 內容摘要完成！\n\n'
             printf '%s\n\n' "${summary}"
-          } > "${result_file}"
+          } > "${ISSUE_DIR}/result.md"
 
-          echo "::notice::摘要完成，結果已寫入 ${result_file}"
+          echo "::notice::摘要完成，結果已寫入 ${ISSUE_DIR}/result.md"
 
       # 推送結果到 issue branch。
       - name: 推送結果

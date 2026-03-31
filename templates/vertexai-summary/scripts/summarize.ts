@@ -54,21 +54,127 @@ async function readSystemPrompt(): Promise<string> {
   return systemPrompt;
 }
 
-function buildPrompt(userPrompt: string, contextJsonl: string): string {
-  return [
-    '使用者需求（user.md）：',
-    '"""',
-    userPrompt,
-    '"""',
-    '',
-    '上下文（jsonl）：',
-    '"""',
-    contextJsonl,
-    '"""',
-    '',
-    '請根據使用者需求與上下文輸出摘要。',
-    '若需要補充最新的公開資訊或查證內容，可以使用 Google Search。',
-  ].join('\n');
+function getContextJsonlLines(contextJsonl: string): string[] {
+  return contextJsonl
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function parseContextRecord(line: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function getMessageRole(line: string): string | null {
+  const parsed = parseContextRecord(line);
+  const role = parsed?.role;
+  return typeof role === 'string' ? normalizeText(role).toLowerCase() : null;
+}
+
+function mapRole(role: string | null): 'user' | 'model' | null {
+  if (role === 'user') return 'user';
+  if (role === 'assistant') return 'model';
+  return null;
+}
+
+function getRecordText(record: Record<string, unknown>): string {
+  const content = record.content;
+  if (typeof content === 'string') {
+    const normalized = normalizeText(content);
+    if (normalized) return normalized;
+  }
+
+  return normalizeText(JSON.stringify(record));
+}
+
+function parseMemoryLimit(value: string | undefined): number {
+  const normalized = normalizeText(value);
+  if (!normalized) return 20;
+
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`MEMORY_LIMIT 必須是大於 0 的整數，收到：${value}`);
+  }
+
+  return parsed;
+}
+
+function selectContextJsonl(contextJsonl: string, memoryLimit: number): {
+  selectedContextJsonl: string;
+  selectedCount: number;
+  selectedTurnCount: number;
+  totalCount: number;
+  totalTurnCount: number;
+} {
+  const lines = getContextJsonlLines(contextJsonl);
+  const userTurnIndexes = lines.reduce<number[]>((indexes, line, index) => {
+    if (getMessageRole(line) === 'user') indexes.push(index);
+    return indexes;
+  }, []);
+
+  if (userTurnIndexes.length === 0) {
+    const selectedLines = lines.slice(-memoryLimit);
+    return {
+      selectedContextJsonl: selectedLines.join('\n'),
+      selectedCount: selectedLines.length,
+      selectedTurnCount: selectedLines.length,
+      totalCount: lines.length,
+      totalTurnCount: lines.length,
+    };
+  }
+
+  const startTurnIndex = Math.max(0, userTurnIndexes.length - memoryLimit);
+  const startLineIndex = userTurnIndexes[startTurnIndex] ?? 0;
+  const selectedLines = lines.slice(startLineIndex);
+
+  return {
+    selectedContextJsonl: selectedLines.join('\n'),
+    selectedCount: selectedLines.length,
+    selectedTurnCount: userTurnIndexes.length - startTurnIndex,
+    totalCount: lines.length,
+    totalTurnCount: userTurnIndexes.length,
+  };
+}
+
+function buildConversationContents(
+  userPrompt: string,
+  contextJsonl: string,
+  memoryLimit: number,
+): Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> {
+  const {
+    selectedContextJsonl,
+  } = selectContextJsonl(contextJsonl, memoryLimit);
+  const contextLines = getContextJsonlLines(selectedContextJsonl);
+  const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+
+  for (const line of contextLines) {
+    const record = parseContextRecord(line);
+    if (!record) continue;
+
+    const role = mapRole(typeof record.role === 'string' ? normalizeText(record.role).toLowerCase() : null);
+    if (!role) continue;
+
+    const text = getRecordText(record);
+    if (!text) continue;
+
+    contents.push({
+      role,
+      parts: [{ text }],
+    });
+  }
+
+  contents.push({
+    role: 'user',
+    parts: [{
+      text: userPrompt,
+    }],
+  });
+
+  return contents;
 }
 
 async function main(): Promise<void> {
@@ -78,6 +184,7 @@ async function main(): Promise<void> {
   const promptFile = process.env.PROMPT_FILE;
   if (!promptFile) throw new Error('缺少 PROMPT_FILE 環境變數');
   const model = normalizeText(process.env.VERTEXAI_SUMMARY_MODEL) || 'google/gemini-2.5-flash';
+  const memoryLimit = parseMemoryLimit(process.env.MEMORY_LIMIT);
 
   const userPrompt = await readUserPrompt(promptFile);
   const contextJsonlPath = await resolveContextJsonlPath();
@@ -96,12 +203,7 @@ async function main(): Promise<void> {
       systemInstruction: systemPrompt,
       tools: [{ googleSearch: {} }],
     },
-    contents: [{
-      role: 'user',
-      parts: [{
-        text: buildPrompt(userPrompt, contextJsonl),
-      }],
-    }],
+    contents: buildConversationContents(userPrompt, contextJsonl, memoryLimit),
   });
 
   const summary = normalizeText(result.text);
