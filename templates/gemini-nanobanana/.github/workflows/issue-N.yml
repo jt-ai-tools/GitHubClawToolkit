@@ -202,7 +202,9 @@ jobs:
           else
             git commit -m "chore: add generated images for issue #${{ env.ISSUE_NUMBER }}"
           fi
-          git push origin "issue-${{ env.ISSUE_NUMBER }}" --force
+          git fetch origin "issue-${{ env.ISSUE_NUMBER }}"
+          git rebase "origin/issue-${{ env.ISSUE_NUMBER }}"
+          git push --force-with-lease origin "issue-${{ env.ISSUE_NUMBER }}"
 
       - name: 任務失敗處理
         if: failure() && steps.generate.conclusion == 'failure'
