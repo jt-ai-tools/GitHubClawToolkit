@@ -106,7 +106,7 @@ jobs:
           mkdir -p "artifacts/${{ env.COMMENT_ID }}"
           
           npx -y @github/copilot@${{ vars.COPILOT_CLI_VERSION || '1.0.14' }} \
-            -p "{issue-comment-id}=${{ env.COMMENT_ID }}\n\n$(cat "artifacts/${{ env.USER_COMMENT_ID }}/user.md")" \
+            -p "請將最終結果寫入 artifacts/${{ env.COMMENT_ID }}/result.md 。我的提示詞為: $(cat \"artifacts/${{ env.USER_COMMENT_ID }}/user.md\")" \
             --yolo --stream off --continue --output-format json \
             > artifacts/${{ env.COMMENT_ID }}/output.jsonl \
             2> artifacts/${{ env.COMMENT_ID }}/error.log
@@ -140,4 +140,3 @@ jobs:
           issue_number: ${{ env.ISSUE_NUMBER }}
           comment_id: ${{ env.COMMENT_ID }}
           message_file: artifacts/${{ env.COMMENT_ID }}/result.md
-
