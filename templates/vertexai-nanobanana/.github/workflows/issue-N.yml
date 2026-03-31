@@ -103,7 +103,7 @@ jobs:
           context_jsonl_file="$(find . -maxdepth 1 -type f -name '*.jsonl' | head -n 1 || true)"
 
           if [[ ! -f "${PROMPT_FILE}" ]]; then
-            echo "::error::${PROMPT_FILE} 不存在。請確認 issue branch 已建立 artifacts/${prompt_comment_id}/user.md。"
+            echo "::error::${PROMPT_FILE} 不存在。請確認 issue branch 已建立 ${ISSUE_DIR}/user.md。"
             exit 1
           fi
 
@@ -114,7 +114,7 @@ jobs:
 
           echo "::notice::將使用 ${PROMPT_FILE} 作為 user prompt"
           output="$(PROMPT_FILE="${PROMPT_FILE}" CONTEXT_JSONL_FILE="${context_jsonl_file}" SYSTEM_PROMPT_FILE="${SYSTEM_PROMPT_FILE}" TEMPLATE_ROOT="${TEMPLATE_ROOT}" ISSUE_DIR="${ISSUE_DIR}" NAME_PREFIX="${NAME_PREFIX}" VERTEXAI_NANOBANANA_API_KEY="${VERTEXAI_NANOBANANA_API_KEY}" VERTEXAI_NANOBANANA_MODEL="${VERTEXAI_NANOBANANA_MODEL}" bun run "${GENERATE_SCRIPT}")"
-          echo "${output}"
+          echo "${output}" | tee ${ISSUE_DIR}/output.txt
 
           saved_files="$(echo "${output}" | grep '^Saved: ' | sed 's/^Saved: //' | paste -sd ',' -)"
 
@@ -126,18 +126,15 @@ jobs:
           echo "saved_files=${saved_files}" >> "$GITHUB_OUTPUT"
           echo "::notice::生成完成：${saved_files}"
 
-          branch_name="${ISSUE_BRANCH}"
-          result_file="${ISSUE_DIR}/result.md"
-
           {
             printf '🎨 圖片生成完成！\n\n'
             IFS=',' read -ra files <<< "${saved_files}"
             for f in "${files[@]}"; do
               filename="$(basename "${f}")"
-              url="https://github.com/${GITHUB_REPOSITORY}/blob/${branch_name}/${f}?raw=true"
+              url="https://github.com/${GITHUB_REPOSITORY}/blob/${ISSUE_BRANCH}/${f}?raw=true"
               printf '![%s](%s)\n\n' "${filename}" "${url}"
             done
-          } > "${result_file}"
+          } > "${ISSUE_DIR}/result.md"
 
       # 推送結果到 issue branch。
       - name: 推送結果
@@ -150,7 +147,7 @@ jobs:
         if: failure() && steps.generate.conclusion == 'failure'
         uses: duotify/GitHubClawToolkit/actions/error-handler-action@v1.1.1
         with:
-          output_file: "artifacts/${{ env.COMMENT_ID }}/result.md"
+          output_file: "artifacts/${{ env.COMMENT_ID }}/output.txt"
           result_file: "artifacts/${{ env.COMMENT_ID }}/result.md"
 
       - name: 執行結果回報

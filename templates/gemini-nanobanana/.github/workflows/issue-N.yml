@@ -34,11 +34,6 @@ on:
         required: false
         type: string
         default: ''
-      model:
-        description: 'Gemini 圖片生成模型名稱'
-        required: false
-        default: 'gemini-3-flash-preview'
-        type: string
   repository_dispatch:
     types: [create-image]
 
@@ -55,8 +50,8 @@ permissions:
 env:
   ISSUE_NUMBER: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.issue_number || inputs.issue_number }}"
   COMMENT_ID: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.comment_id || inputs.comment_id }}"
-  MODEL: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.model || inputs.model || 'gemini-3-flash-preview' }}"
-
+  USER_COMMENT_ID: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.user_comment_id || inputs.user_comment_id }}"
+  MODEL: "gemini-3-pro-image-preview"
   GEMINI_API_KEY: "${{ secrets.GEMINI_API_KEY }}"
 
 jobs:
@@ -85,7 +80,6 @@ jobs:
       # 安裝相關套件
       - run: bun install --no-fund --no-audit @google/genai
 
-
       - name: 狀態更新處理
         if: ${{ (github.event_name == 'repository_dispatch' && github.event.client_payload.event_data == 'StatusUpdate') || inputs.event_data == 'StatusUpdate' }}
         shell: bash
@@ -102,62 +96,30 @@ jobs:
           GEMINI_API_KEY: ${{ env.GEMINI_API_KEY }}
           NANOBANANA_MODEL: ${{ env.MODEL }}
           ISSUE_DIR: "artifacts/${{ env.COMMENT_ID }}"
-          PROMPT_FILE: "./issue.md"
+          SYSTEM_PROMPT_FILE: "./SYSTEM.md"
+          TEMPLATE_ROOT: "."
+          GENERATE_SCRIPT: "./scripts/generate-image.ts"
           NAME_PREFIX: "image-${{ env.COMMENT_ID || env.ISSUE_NUMBER }}"
+          USER_COMMENT_ID: ${{ env.USER_COMMENT_ID }}
         run: |
           set -euo pipefail
 
+          PROMPT_FILE="./artifacts/${USER_COMMENT_ID}/user.md"
+          context_jsonl_file="$(find . -maxdepth 1 -type f -name '*.jsonl' | head -n 1 || true)"
+
           if [[ ! -f "${PROMPT_FILE}" ]]; then
-            echo "::error::${PROMPT_FILE} 不存在。請確認根目錄已正確建立並包含 issue.md。"
+            echo "::error::${PROMPT_FILE} 不存在。請確認 issue branch 已建立 ${ISSUE_DIR}/user.md。"
             exit 1
           fi
 
-          PROMPT="$(cat "${PROMPT_FILE}")"
-          if [[ -z "${PROMPT// /}" ]]; then
-            echo "::error::${PROMPT_FILE} 內容為空，無法生成圖片"
+          if [[ -z "${context_jsonl_file}" ]]; then
+            echo "::error::找不到 issue branch 根目錄 jsonl 檔案。"
             exit 1
           fi
 
-          mkdir -p "${ISSUE_DIR}"
-
-          # 將 GoogleGenAI SDK 圖片生成腳本寫入暫存檔後執行
-          cat > imagen-generate.mjs << 'EOF'
-          import { GoogleGenAI } from "@google/genai";
-          import { writeFileSync, mkdirSync } from "node:fs";
-          import { join } from "node:path";
-
-          const apiKey = process.env.GEMINI_API_KEY;
-          if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
-
-          const model = process.env.NANOBANANA_MODEL || "imagen-4.0-generate-001";
-          const prompt = process.env.PROMPT;
-          const issueDir = process.env.ISSUE_DIR;
-          const namePrefix = process.env.NAME_PREFIX;
-
-          const ai = new GoogleGenAI({ apiKey });
-
-          const response = await ai.models.generateImages({
-            model,
-            prompt,
-            config: { numberOfImages: 1 },
-          });
-
-          mkdirSync(issueDir, { recursive: true });
-
-          let idx = 1;
-          for (const generatedImage of response.generatedImages) {
-            const imgBytes = generatedImage.image.imageBytes;
-            const buffer = Buffer.from(imgBytes, "base64");
-            const filePath = join(issueDir, `${namePrefix}-${idx}.png`);
-            writeFileSync(filePath, buffer);
-            console.log(`Saved: ${filePath}`);
-            idx++;
-          }
-          EOF
-
-          # 使用 GoogleGenAI SDK 呼叫 Imagen API 生成圖片，解析 "Saved: <path>" 輸出行取得儲存路徑
-          output="$(PROMPT="${PROMPT}" node imagen-generate.mjs)"
-          echo "${output}"
+          echo "::notice::將使用 ${PROMPT_FILE} 作為 user prompt"
+          output="$(PROMPT_FILE="${PROMPT_FILE}" CONTEXT_JSONL_FILE="${context_jsonl_file}" SYSTEM_PROMPT_FILE="${SYSTEM_PROMPT_FILE}" TEMPLATE_ROOT="${TEMPLATE_ROOT}" ISSUE_DIR="${ISSUE_DIR}" NAME_PREFIX="${NAME_PREFIX}" GEMINI_API_KEY="${GEMINI_API_KEY}" bun run "${GENERATE_SCRIPT}")"
+          echo "${output}" | tee ${ISSUE_DIR}/output.txt
 
           saved_files="$(echo "${output}" | grep '^Saved: ' | sed 's/^Saved: //' | paste -sd ',' -)"
 
@@ -169,19 +131,15 @@ jobs:
           echo "saved_files=${saved_files}" >> "$GITHUB_OUTPUT"
           echo "::notice::生成完成：${saved_files}"
 
-          # 寫入結果 Markdown，供後續 update-comment-action 使用
-          branch_name="issue-${{ env.ISSUE_NUMBER }}"
-          result_file="${ISSUE_DIR}/result.md"
-
           {
             printf '🎨 圖片生成完成！\n\n'
             IFS=',' read -ra files <<< "${saved_files}"
             for f in "${files[@]}"; do
               filename="$(basename "${f}")"
-              url="https://github.com/${GITHUB_REPOSITORY}/blob/${branch_name}/${f}?raw=true"
+              url="https://github.com/${GITHUB_REPOSITORY}/blob/issue-${ISSUE_NUMBER}/${f}?raw=true"
               printf '![%s](%s)\n\n' "${filename}" "${url}"
             done
-          } > "${result_file}"
+          } > "${ISSUE_DIR}/result.md"
 
       # 推送結果到 issue branch。
       - name: 推送結果
@@ -194,7 +152,7 @@ jobs:
         if: failure() && steps.generate.conclusion == 'failure'
         uses: duotify/GitHubClawToolkit/actions/error-handler-action@v1.1.1
         with:
-          output_file: "artifacts/${{ env.COMMENT_ID }}/result.md"
+          output_file: "artifacts/${{ env.COMMENT_ID }}/output.txt"
           result_file: "artifacts/${{ env.COMMENT_ID }}/result.md"
 
       - name: 執行結果回報
