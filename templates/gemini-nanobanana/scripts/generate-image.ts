@@ -199,19 +199,21 @@ async function buildAttachmentParts(record: Record<string, unknown>): Promise<Ch
 }
 
 function resolveGitHubFileTarget(attachment: Record<string, unknown>): GitHubFileTarget | null {
+  const repoPath = typeof attachment.github_repo_path === 'string' ? normalizeText(attachment.github_repo_path) : '';
+  const repository = normalizeText(process.env.GITHUB_REPOSITORY);
+  if (repoPath && repository.includes('/')) {
+    const [owner, repo] = repository.split('/', 2);
+    const ref = normalizeText(process.env.ISSUE_BRANCH || process.env.GITHUB_REF_NAME) || 'main';
+    return { owner, repo, ref, path: repoPath };
+  }
+
   const htmlUrl = typeof attachment.github_html_url === 'string' ? normalizeText(attachment.github_html_url) : '';
   if (htmlUrl) {
     const parsed = parseGitHubHtmlUrl(htmlUrl);
     if (parsed) return parsed;
   }
 
-  const repoPath = typeof attachment.github_repo_path === 'string' ? normalizeText(attachment.github_repo_path) : '';
-  const repository = normalizeText(process.env.GITHUB_REPOSITORY);
-  if (!repoPath || !repository.includes('/')) return null;
-
-  const [owner, repo] = repository.split('/', 2);
-  const ref = normalizeText(process.env.GITHUB_REF_NAME || process.env.ISSUE_BRANCH) || 'main';
-  return { owner, repo, ref, path: repoPath };
+  return null;
 }
 
 function parseGitHubHtmlUrl(htmlUrl: string): GitHubFileTarget | null {
