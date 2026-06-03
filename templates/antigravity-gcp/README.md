@@ -11,9 +11,9 @@
 
 ### GitHub Secret
 
-- `AGY_GCP_SA_KEY_JSON`
-  - 內容為 GCP Service Account JSON（金鑰全文）
-  - workflow 會用 `google-github-actions/auth@v2` 載入憑證
+- `AGY_OAUTH_CREDS_JSON`
+  - 內容為本機 `agy` 登入後產生的 `~/.gemini/oauth_creds.json` 全文
+  - 必須包含 `refresh_token`，workflow 會在 runner 還原成 `~/.gemini/oauth_creds.json`
 
 ### 可選 GitHub Variables
 
@@ -22,15 +22,23 @@
 
 ## GCP 前置建議（學員版）
 
-1. 建立可用的 GCP 專案（可使用試用額度）
-2. 建立 service account 並下載 JSON key
-3. 把 JSON key 存成 repo secret：`AGY_GCP_SA_KEY_JSON`
+1. 使用可用 GCP 試用額度的 Google 帳號在本機先完成 `agy` 登入
+2. 確認本機存在 `~/.gemini/oauth_creds.json` 且含 `refresh_token`
+3. 將該 JSON 全文存成 repo secret：`AGY_OAUTH_CREDS_JSON`
 4. 視需求設定 `AGY_MODEL`
+
+## 安全提醒
+
+- 不要把 `oauth_creds.json` 直接提交到 repo。
+- `AGY_OAUTH_CREDS_JSON` 具有高權限，建議只放在 GitHub Secrets。
+- 若帳號撤銷授權或 token 失效，需在本機重新 `agy` 登入並更新 secret。
 
 ## 常見錯誤
 
 - `Authentication required` / `authentication timed out`
-  - 代表 AGY 未吃到有效認證，請先確認 `AGY_GCP_SA_KEY_JSON` 是否正確。
+  - 代表 AGY 未吃到有效認證，請先確認 `AGY_OAUTH_CREDS_JSON` 是否正確且未過期/撤銷。
+- `AGY_OAUTH_CREDS_JSON must include refresh_token`
+  - 代表 secret 內容不是完整的 `oauth_creds.json`。
 - `COMMENT_ID or USER_COMMENT_ID is missing`
   - 代表觸發 payload 缺少必要欄位。
 - `Missing user prompt file`

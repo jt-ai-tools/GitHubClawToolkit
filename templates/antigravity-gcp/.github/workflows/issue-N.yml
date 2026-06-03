@@ -73,13 +73,34 @@ jobs:
         run: |
           echo "StatusUpdate event detected, performing status update..."
 
-      - name: Authenticate to Google Cloud
+      - name: Restore Antigravity OAuth credentials
         if: ${{ (github.event_name == 'repository_dispatch' && github.event.client_payload.event_data != 'StatusUpdate') || inputs.event_data != 'StatusUpdate' }}
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: "${{ secrets.AGY_GCP_SA_KEY_JSON }}"
-          create_credentials_file: true
-          export_environment_variables: true
+        shell: bash
+        env:
+          AGY_OAUTH_CREDS_JSON: ${{ secrets.AGY_OAUTH_CREDS_JSON }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${AGY_OAUTH_CREDS_JSON}" ]]; then
+            echo "Missing required secret: AGY_OAUTH_CREDS_JSON"
+            exit 1
+          fi
+
+          mkdir -p "${HOME}/.gemini"
+          printf '%s' "${AGY_OAUTH_CREDS_JSON}" > "${HOME}/.gemini/oauth_creds.json"
+          chmod 600 "${HOME}/.gemini/oauth_creds.json"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          creds_file = Path.home() / ".gemini" / "oauth_creds.json"
+          with creds_file.open("r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          if not data.get("refresh_token"):
+              raise SystemExit("AGY_OAUTH_CREDS_JSON must include refresh_token")
+          PY
 
       - name: Install Antigravity CLI
         if: ${{ (github.event_name == 'repository_dispatch' && github.event.client_payload.event_data != 'StatusUpdate') || inputs.event_data != 'StatusUpdate' }}
@@ -165,7 +186,7 @@ jobs:
           fi
 
           # agy 在認證失敗時可能仍回傳 exit 0，需主動偵測輸出中的錯誤訊息
-          if grep -Eq '(^Authentication required\\.|^Error:|authentication timed out)' "artifacts/${COMMENT_ID}/output.log"; then
+          if grep -Eq '(^Authentication required\\.|^Error:|authentication timed out|You are not logged into Antigravity\\.)' "artifacts/${COMMENT_ID}/output.log"; then
             echo "AGY output indicates an execution/authentication error." >> "artifacts/${COMMENT_ID}/error.log"
             exit 1
           fi
