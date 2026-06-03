@@ -49,7 +49,7 @@ env:
   USER_COMMENT_ID: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.user_comment_id || inputs.user_comment_id }}"
   AGY_MODEL: "${{ vars.AGY_MODEL || 'gemini-2.5-flash' }}"
   AGY_PRINT_TIMEOUT: "${{ vars.AGY_PRINT_TIMEOUT || '20m' }}"
-  GOOGLE_CLOUD_PROJECT: "${{ vars.GOOGLE_CLOUD_PROJECT }}"
+  GOOGLE_CLOUD_PROJECT: "${{ secrets.GOOGLE_CLOUD_PROJECT }}"
 
 jobs:
   run-agent:

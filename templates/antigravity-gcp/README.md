@@ -9,16 +9,14 @@
 
 ## 必要設定
 
-### GitHub Secret
+### GitHub Secrets
 
 - `AGY_GOOGLE_ADC_JSON`
   - 內容為 GCP **Application Default Credentials** JSON 全文
   - 產生方式：本機執行 `gcloud auth application-default login`，完成登入後複製 `~/.config/gcloud/application_default_credentials.json` 的內容
   - 必須包含 `refresh_token`
-
-### 必要 GitHub Variables
-
-- `GOOGLE_CLOUD_PROJECT` — 你的 GCP 專案 ID（例：`gen-lang-client-0487760146`）
+- `GOOGLE_CLOUD_PROJECT`
+  - 你的 GCP 專案 ID（例：`gen-lang-client-0487760146`）
 
 ### 可選 GitHub Variables
 
@@ -41,9 +39,9 @@
    ```bash
    cat ~/.config/gcloud/application_default_credentials.json
    ```
-5. 到 repo 的 **Settings → Secrets and variables → Actions**：
+5. 到 repo 的 **Settings → Secrets and variables → Actions**（或透過 TG 設定流程自動設定）：
    - 新增 Secret `AGY_GOOGLE_ADC_JSON`：貼上步驟 4 的 JSON 全文
-   - 新增 Variable `GOOGLE_CLOUD_PROJECT`：填入你的 GCP 專案 ID
+   - 新增 Secret `GOOGLE_CLOUD_PROJECT`：填入你的 GCP 專案 ID
 6. 視需求設定 `AGY_MODEL`
 
 ## 安全提醒
