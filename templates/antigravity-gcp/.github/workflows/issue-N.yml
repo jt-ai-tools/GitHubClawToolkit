@@ -78,7 +78,7 @@ jobs:
         shell: bash
         env:
           AGY_OAUTH_TOKEN: ${{ secrets.AGY_OAUTH_TOKEN }}
-          AGY_GCP_PROJECT: ${{ secrets.AGY_GCP_PROJECT }}
+          AGY_GCP_PROJECT: ${{ secrets.AGY_GCP_PROJECT || vars.AGY_GCP_PROJECT }}
           AGY_MODEL: ${{ env.AGY_MODEL }}
         run: |
           set -euo pipefail
@@ -88,7 +88,7 @@ jobs:
             exit 1
           fi
           if [[ -z "${AGY_GCP_PROJECT}" ]]; then
-            echo "::error::Missing required secret: AGY_GCP_PROJECT"
+            echo "::error::Missing required configuration: AGY_GCP_PROJECT (secret or variable)"
             exit 1
           fi
 
