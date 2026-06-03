@@ -110,6 +110,30 @@ jobs:
           echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
           "${HOME}/.local/bin/agy" --help >/dev/null
 
+      - name: 診斷 AGY CLI
+        if: ${{ (github.event_name == 'repository_dispatch' && github.event.client_payload.event_data != 'StatusUpdate') || inputs.event_data != 'StatusUpdate' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== AGY diagnostic ==="
+          echo "which agy: $(which agy)"
+          echo "agy version:"
+          agy --version 2>&1 || true
+          echo ""
+          echo "=== Simple test (timeout 60s) ==="
+          set +e
+          timeout 90 agy --print "Say hello in one sentence" \
+            --dangerously-skip-permissions \
+            --print-timeout "60s" 2>&1 | tee /tmp/agy-test.log
+          TEST_EXIT=$?
+          set -e
+          echo ""
+          echo "Test exit code: ${TEST_EXIT}"
+          echo "Test output size: $(wc -c < /tmp/agy-test.log) bytes"
+          if [[ $(wc -c < /tmp/agy-test.log) -eq 0 ]]; then
+            echo "::warning::AGY produced no output even for a simple test prompt"
+          fi
+
       - name: 執行任務
         if: ${{ (github.event_name == 'repository_dispatch' && github.event.client_payload.event_data != 'StatusUpdate') || inputs.event_data != 'StatusUpdate' }}
         id: agy_task
@@ -160,42 +184,37 @@ jobs:
           fi
 
           USER_PROMPT_CONTENT="$(cat "$USER_PROMPT_FILE")"
+          echo "User prompt length: ${#USER_PROMPT_CONTENT} chars"
+          echo "User prompt (first 200 chars): ${USER_PROMPT_CONTENT:0:200}"
 
-          AGY_PROMPT="$(cat <<EOF
+          # 將 prompt 寫入暫存檔，避免命令行長度或特殊字元問題
+          PROMPT_FILE="$(mktemp)"
+          cat > "${PROMPT_FILE}" <<-PROMPT_EOF
           請先閱讀 issue.md 與目前 repository 狀態，並完成以下任務：${USER_PROMPT_CONTENT}
 
           請使用模型：${AGY_MODEL}
 
           請把最終結果完整寫入 artifacts/${COMMENT_ID}/result.md（繁體中文），並確保檔案可直接作為 issue 回覆內容。
-          EOF
-          )"
+          PROMPT_EOF
 
+          echo "Prompt file: ${PROMPT_FILE} ($(wc -c < "${PROMPT_FILE}") bytes)"
           echo "Starting AGY execution..."
           set +e
-          agy --print "${AGY_PROMPT}" \
+          agy --print "$(cat "${PROMPT_FILE}")" \
             --dangerously-skip-permissions \
             --print-timeout "${AGY_PRINT_TIMEOUT}" \
-            > "artifacts/${COMMENT_ID}/output.log" \
-            2> "artifacts/${COMMENT_ID}/error.log"
-          AGY_EXIT=$?
+            2>&1 | tee "artifacts/${COMMENT_ID}/output.log"
+          AGY_EXIT=${PIPESTATUS[0]}
           set -e
+          rm -f "${PROMPT_FILE}"
 
+          echo ""
           echo "AGY exit code: ${AGY_EXIT}"
           echo "output.log size: $(wc -c < "artifacts/${COMMENT_ID}/output.log") bytes"
-          echo "error.log size: $(wc -c < "artifacts/${COMMENT_ID}/error.log") bytes"
 
-          # 顯示 stderr 供診斷（限前 20 行）
-          if [[ -s "artifacts/${COMMENT_ID}/error.log" ]]; then
-            echo "--- AGY stderr (first 20 lines) ---"
-            head -20 "artifacts/${COMMENT_ID}/error.log"
-            echo "--- end stderr ---"
-          fi
-
-          # 偵測認證失敗（僅檢查明確的 auth 錯誤訊息，不匹配一般性 Error:）
+          # 偵測認證失敗（僅檢查明確的 auth 錯誤訊息）
           if grep -Eq '(^Authentication required\.|authentication timed out|You are not logged into Antigravity\.)' "artifacts/${COMMENT_ID}/output.log"; then
             echo "::error::AGY authentication failed. Please update AGY_OAUTH_TOKEN secret."
-            sed -n '/^Authentication required\./,/^Error: authentication timed out\./p' "artifacts/${COMMENT_ID}/output.log" \
-              >> "artifacts/${COMMENT_ID}/error.log" || true
             exit 1
           fi
 
@@ -207,9 +226,6 @@ jobs:
               } > "artifacts/${COMMENT_ID}/result.md"
             else
               echo "::error::AGY produced no output (exit code: ${AGY_EXIT})"
-              if [[ -s "artifacts/${COMMENT_ID}/error.log" ]]; then
-                cat "artifacts/${COMMENT_ID}/error.log"
-              fi
               exit 1
             fi
           fi
