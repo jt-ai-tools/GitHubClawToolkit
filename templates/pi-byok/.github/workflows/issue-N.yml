@@ -199,23 +199,37 @@ jobs:
 
           # Pi 會透過 PI_CODING_AGENT_DIR=.pi 讀取 template 內的 settings.json 與 models.json
           # 以 error loglevel 執行，避免 npm warning 汙染 error.log
+          set +e
           npm_config_loglevel=error npx -y "@mariozechner/pi-coding-agent@${PI_CODING_AGENT_VERSION}" \
             -p "請將最終結果寫入 artifacts/${COMMENT_ID}/result.md 。我的提示詞為: ${USER_PROMPT_CONTENT}" \
             --mode json \
             2> "artifacts/${COMMENT_ID}/error.log" \
             | jq -c 'select(.type | test("^(session|agent_|turn_|message_start|message_end|tool_|error|result|compaction_|auto_retry_)"))' \
             > "artifacts/${COMMENT_ID}/output.jsonl"
+          EXIT_CODE=$?
+          set -e
 
           # Pi 即使遇到 provider 錯誤也會以 exit 0 結束，需要從 output.jsonl 偵測 errorMessage
           # 偵測到時補寫進 error.log 並讓本步驟失敗，後續的失敗處理才會觸發
+          HAS_ERROR=0
           if jq -e '.. | objects | select((.errorMessage // "") != "")' \
               "artifacts/${COMMENT_ID}/output.jsonl" > /dev/null; then
             jq -r '.. | objects | .errorMessage? // empty' \
               "artifacts/${COMMENT_ID}/output.jsonl" \
               | awk 'NF && !seen[$0]++' \
               >> "artifacts/${COMMENT_ID}/error.log"
-            echo "Pi reported errorMessage; marking step as failed." >&2
-            exit 1
+            echo "Pi reported errorMessage." >&2
+            HAS_ERROR=1
+          fi
+
+          if [[ $EXIT_CODE -ne 0 || $HAS_ERROR -ne 0 ]]; then
+            if [[ -s "artifacts/${COMMENT_ID}/result.md" ]]; then
+              echo "Warning: Pi exited with code ${EXIT_CODE} or reported errorMessage, but result.md was generated."
+              exit 0
+            else
+              echo "Pi execution failed; marking step as failed." >&2
+              exit 1
+            fi
           fi
 
       - name: 推送結果
