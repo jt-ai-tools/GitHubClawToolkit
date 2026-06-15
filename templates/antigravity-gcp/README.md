@@ -9,7 +9,7 @@
 - Google Cloud 帳號（已啟用免費試用 $300 額度）
 - 本機已安裝 Antigravity CLI（`agy`）
 
-### 步驟
+### 步驟（Linux / macOS / WSL）
 
 1. 在終端機執行：
 
@@ -33,7 +33,23 @@ agy --print "hello"
 cat ~/.gemini/antigravity-cli/antigravity-oauth-token
 ```
 
-輸出會是一段 JSON，類似：
+### 步驟（Windows）
+
+Windows 版 `agy` 會把 OAuth 憑證存在系統的 Credential Manager（`gemini:antigravity`），不會產生 `antigravity-oauth-token` 檔案。請先完成登入，再用 PowerShell 匯出 JSON。
+
+1. 在 PowerShell 執行 `agy`，完成 Google 授權。
+
+> ⚠️ **重要：請選擇「Use a Google Cloud Project」**，不要登入個人的 Google AI Pro 帳號。選擇你建立好的 GCP 專案來授權。
+
+2. 在 PowerShell 貼上以下指令（一次貼上整行），輸出即為 `AGY_OAUTH_TOKEN` 所需的 JSON：
+
+```powershell
+if(-not('AgyCred'-as[type])){Add-Type 'using System;using System.Runtime.InteropServices;using System.Text;public class AgyCred{[StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]public struct R{public int F,T;public string N,C;public System.Runtime.InteropServices.ComTypes.FILETIME L;public int S;public IntPtr B,P,A;public string X,U;}[DllImport("advapi32.dll",CharSet=CharSet.Unicode)]public static extern bool CredRead(string t,int y,int z,out IntPtr p);[DllImport("advapi32.dll")]public static extern bool CredFree(IntPtr p);}'};$p=[IntPtr]::Zero;try{if(-not[AgyCred]::CredRead('gemini:antigravity',1,0,[ref]$p)){throw 'agy credential not found'};$r=[Runtime.InteropServices.Marshal]::PtrToStructure($p,[type][AgyCred+R]);$b=New-Object byte[] $r.S;[Runtime.InteropServices.Marshal]::Copy($r.B,$b,0,$r.S);[Text.Encoding]::UTF8.GetString($b).Trim([char]0)}finally{if($p-ne[IntPtr]::Zero){[AgyCred]::CredFree($p)|Out-Null}}
+```
+
+### 複製 JSON 到 GitHub Secret
+
+不論使用哪個平台，輸出都會是一段 JSON，類似：
 
 ```json
 {
@@ -47,7 +63,7 @@ cat ~/.gemini/antigravity-cli/antigravity-oauth-token
 }
 ```
 
-5. 複製**整份 JSON 內容**，這就是 `AGY_OAUTH_TOKEN` 的值。
+複製**整份 JSON 內容**，這就是 `AGY_OAUTH_TOKEN` 的值。
 
 > ⚠️ 請複製完整的 JSON，不是只有 refresh_token 欄位。
 
